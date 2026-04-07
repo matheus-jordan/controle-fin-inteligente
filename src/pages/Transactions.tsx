@@ -107,40 +107,55 @@ export default function Transactions() {
           <div className="text-center py-8 text-muted-foreground">Nenhuma transação encontrada</div>
         ) : (
           <div className="space-y-2">
-            {filtered.map(t => (
-              <Card key={t.id}>
-                <CardContent className="p-3 flex items-center gap-3">
-                  <div className={cn('w-1 h-10 rounded-full shrink-0', t.type === 'income' ? 'bg-success' : 'bg-destructive')} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">{t.description}</p>
-                      <PriorityBadge priority={t.priority} />
+            {filtered.map(t => {
+              const isIncome = t.type === 'income';
+              return (
+                <Card key={t.id}>
+                  <CardContent className="p-3 flex items-center gap-3">
+                    <div className={cn('w-1 h-10 rounded-full shrink-0', isIncome ? 'bg-success' : 'bg-destructive')} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{t.description}</p>
+                        {!isIncome && <PriorityBadge priority={t.priority} />}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {t.categories?.name && (
+                          <>
+                            <span className="text-[10px] text-muted-foreground">{t.categories.name}</span>
+                            <span className="text-[10px] text-muted-foreground">•</span>
+                          </>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">{formatDate(t.date)}</span>
+                        {isIncome && t.is_recurring && (
+                          <>
+                            <span className="text-[10px] text-muted-foreground">•</span>
+                            <span className="text-[10px] text-muted-foreground">Recorrente</span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-muted-foreground">{t.categories?.name}</span>
-                      <span className="text-[10px] text-muted-foreground">•</span>
-                      <span className="text-[10px] text-muted-foreground">{formatDate(t.date)}</span>
+                    <div className="text-right flex items-center gap-2">
+                      <div>
+                        <p className={cn('text-sm font-bold font-mono', isIncome ? 'money-positive' : 'money-negative')}>
+                          {isIncome ? '+' : '-'}{formatCurrency(Number(t.amount))}
+                        </p>
+                        {!isIncome && <StatusBadge status={t.status as any} />}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {!isIncome && (
+                          <button onClick={() => handleTogglePaid(t.id, t.status)} className="p-1 rounded hover:bg-muted">
+                            <Check className={cn('h-3.5 w-3.5', t.status === 'paid' ? 'text-success' : 'text-muted-foreground')} />
+                          </button>
+                        )}
+                        <button onClick={() => handleDelete(t.id)} className="p-1 rounded hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right flex items-center gap-2">
-                    <div>
-                      <p className={cn('text-sm font-bold font-mono', t.type === 'income' ? 'money-positive' : 'money-negative')}>
-                        {t.type === 'income' ? '+' : '-'}{formatCurrency(Number(t.amount))}
-                      </p>
-                      <StatusBadge status={t.status as any} />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <button onClick={() => handleTogglePaid(t.id, t.status)} className="p-1 rounded hover:bg-muted">
-                        <Check className={cn('h-3.5 w-3.5', t.status === 'paid' ? 'text-success' : 'text-muted-foreground')} />
-                      </button>
-                      <button onClick={() => handleDelete(t.id)} className="p-1 rounded hover:bg-destructive/10">
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                      </button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

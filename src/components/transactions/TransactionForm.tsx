@@ -37,6 +37,7 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
   const createTransaction = useCreateTransaction();
 
   const filteredCategories = categories?.filter(c => c.type === type) ?? [];
+  const isIncome = type === 'income';
 
   const handleSubmit = async () => {
     if (!amount || !description) {
@@ -51,13 +52,14 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
         type,
         category_id: categoryId || undefined,
         date,
-        priority: priority as any,
-        status,
-        due_date: dueDate || undefined,
+        // Incomes: auto-set paid, optional priority, no due_date
+        priority: isIncome ? 'optional' : priority as any,
+        status: isIncome ? 'paid' : status,
+        due_date: isIncome ? undefined : (dueDate || undefined),
         is_recurring: isRecurring,
         recurrence_interval: isRecurring ? recurrenceInterval as any : undefined,
       });
-      toast.success(type === 'income' ? 'Entrada registrada!' : 'Saída registrada!');
+      toast.success(isIncome ? 'Entrada registrada!' : 'Saída registrada!');
       resetForm();
       onOpenChange(false);
     } catch {
@@ -121,7 +123,7 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
           <div>
             <Label>Descrição</Label>
             <Input
-              placeholder="Ex: Supermercado"
+              placeholder={isIncome ? 'Ex: Salário' : 'Ex: Supermercado'}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="mt-1"
@@ -143,43 +145,13 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
             </Select>
           </div>
 
-          {/* Date & Due Date */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Data</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <Label>Vencimento</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1" />
-            </div>
-          </div>
-
-          {/* Priority */}
+          {/* Date */}
           <div>
-            <Label>Prioridade</Label>
-            <div className="flex gap-2 mt-1 flex-wrap">
-              {priorities.map(p => (
-                <button
-                  key={p.value}
-                  onClick={() => setPriority(p.value)}
-                  className={cn('px-3 py-1.5 rounded-full text-xs font-medium transition-all',
-                    priority === p.value ? p.color : 'bg-muted text-muted-foreground'
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <Label>Data</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1" />
           </div>
 
-          {/* Status */}
-          <div className="flex items-center justify-between">
-            <Label>Já foi pago?</Label>
-            <Switch checked={status === 'paid'} onCheckedChange={(c) => setStatus(c ? 'paid' : 'pending')} />
-          </div>
-
-          {/* Recurring */}
+          {/* Recurring - shown for both */}
           <div className="flex items-center justify-between">
             <Label>Recorrente?</Label>
             <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
@@ -197,6 +169,41 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
                 <SelectItem value="yearly">Anual</SelectItem>
               </SelectContent>
             </Select>
+          )}
+
+          {/* Expense-only fields */}
+          {!isIncome && (
+            <>
+              {/* Due Date */}
+              <div>
+                <Label>Vencimento</Label>
+                <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1" />
+              </div>
+
+              {/* Priority */}
+              <div>
+                <Label>Prioridade</Label>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  {priorities.map(p => (
+                    <button
+                      key={p.value}
+                      onClick={() => setPriority(p.value)}
+                      className={cn('px-3 py-1.5 rounded-full text-xs font-medium transition-all',
+                        priority === p.value ? p.color : 'bg-muted text-muted-foreground'
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="flex items-center justify-between">
+                <Label>Já foi pago?</Label>
+                <Switch checked={status === 'paid'} onCheckedChange={(c) => setStatus(c ? 'paid' : 'pending')} />
+              </div>
+            </>
           )}
 
           <Button onClick={handleSubmit} className="w-full h-12 text-base" disabled={createTransaction.isPending}>
