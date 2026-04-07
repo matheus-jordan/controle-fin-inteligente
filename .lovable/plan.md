@@ -1,118 +1,58 @@
 
 
-# FinControl — Sistema de Gestão Financeira Pessoal
+# Ajuste do FinControl — Foco em Contas a Pagar
 
-## Visão Geral
-App mobile-first de finanças pessoais com dashboard inteligente, controle de dívidas, cartões e alertas visuais. Moeda BRL, dark/light mode, dados armazenados no Lovable Cloud (Supabase).
-
----
-
-## 🗃️ Modelagem de Dados (Supabase)
-
-### Tabelas:
-1. **categories** — id, name, type (income/expense), icon, color
-2. **transactions** — id, user_id, category_id, description, amount, type (income/expense), date, is_recurring, recurrence_interval, priority (essential/critical/important/optional), status (paid/pending), due_date, created_at
-3. **fixed_bills** — id, user_id, name, amount, category_id, due_day, priority, is_active, created_at
-4. **debts** — id, user_id, name, total_amount, interest_rate, total_installments, paid_installments, installment_amount, priority, status (active/paid_off), start_date, created_at
-5. **credit_cards** — id, user_id, name, last_digits, credit_limit, closing_day, due_day, color, created_at
-6. **card_expenses** — id, user_id, card_id, description, amount, date, installments, current_installment, category_id, created_at
-7. **user_settings** — id, user_id, theme (dark/light), monthly_income_goal, alert_days_before
-
-### Dados iniciais:
-- Categorias pré-cadastradas (Moradia, Alimentação, Transporte, Saúde, Lazer, Educação, Salário, Freelance, etc.)
-- Transações e dívidas de exemplo
+## Resumo
+Transformar o sistema de "carteira financeira" para "gestor de contas a pagar". Entradas ficam simples (sem prioridade/vencimento/status). Dashboard centrado em lista de contas pendentes com alertas visuais. Saldo vira referência secundária.
 
 ---
 
-## 📱 Telas e Navegação
+## Mudanças
 
-### Navegação inferior (mobile-first):
-**Dashboard** | **Transações** | **+ (Add)** | **Dívidas** | **Cartões**
+### 1. Formulário de Transação (`TransactionForm.tsx`)
+- Quando tipo = **entrada**: mostrar apenas Nome, Valor, Data, Toggle recorrente + intervalo
+- Esconder: Prioridade, Vencimento, Status (pago/pendente)
+- Quando tipo = **saída**: manter todos os campos atuais
+- Entradas são salvas automaticamente com `status: 'paid'`, `priority: 'optional'`, sem `due_date`
 
-### 1. Dashboard
-- Cards resumo: Saldo atual, Entradas, Saídas, Dívidas, % Comprometimento
-- Saldo projetado (fim do mês)
-- Lista "Próximos Vencimentos" com badges coloridos (vermelho/amarelo/verde)
-- Gráfico de barras: Entradas vs Saídas (últimos 6 meses)
-- Gráfico de rosca: Gastos por categoria
-- Toggle dark/light mode no header
+### 2. Dashboard (`Dashboard.tsx`) — Redesign completo
+- **Topo**: 3 cards compactos — Entradas do mês, Saídas cadastradas, Estimativa restante
+- Remover card de "Saldo Atual" como destaque principal (mover para texto secundário)
+- Remover card de "Dívidas" e "% Comprometido" do topo (ficam em seções menores)
+- **Seção principal**: "Contas a Pagar" — lista de todas saídas pendentes + fixed_bills, ordenada por:
+  1. Status (pendente primeiro)
+  2. Data de vencimento (mais próximo primeiro)  
+  3. Prioridade (essential > critical > important > optional)
+- Cada item com borda colorida: vermelho (vencido/hoje), amarelo (≤3 dias), verde (ok)
+- Toggle rápido para marcar como pago direto da lista
+- **Seção "Linha do Tempo"**: próximos 7-14 dias com marcadores de pagamentos futuros (visual simples)
+- Mover gráficos para baixo como informação complementar
 
-### 2. Transações
-- Lista filtrada por mês com busca
-- Filtros: tipo, categoria, prioridade, status
-- Cada item mostra: ícone categoria, descrição, valor, data, badge prioridade
-- Swipe para editar/excluir (mobile)
-- FAB para adicionar
+### 3. Transações (`Transactions.tsx`)
+- Na listagem de entradas: não mostrar PriorityBadge nem StatusBadge
+- Entradas exibem apenas: descrição, valor, data, categoria
+- Saídas mantêm todos os badges e ações (toggle pago, excluir)
 
-### 3. Formulário Rápido (modal/sheet)
-- Tipo: Entrada/Saída (toggle)
-- Valor (input numérico grande)
-- Descrição, Categoria (select), Data
-- Prioridade (chips: Essencial/Crítico/Importante/Opcional)
-- Toggle recorrente + intervalo
-- Data de vencimento
-- Máximo 1 tela, sem scroll excessivo
+### 4. Hook `useFinanceData.ts`
+- Adicionar hook `useUpcomingPayments()` que combina transações pendentes + fixed_bills do mês, ordena por vencimento e retorna lista unificada com status de urgência
+- Ajustar `useFinanceSummary` para calcular "estimativa restante" = entradas - saídas cadastradas (sem pretensão de precisão)
 
-### 4. Contas Fixas
-- Lista de contas mensais com status pago/pendente
-- Highlight automático: vermelho (vencida), amarelo (≤3 dias), verde (ok)
-- Toggle rápido para marcar como paga
-- Acessível via Dashboard ou menu
+### 5. Componente novo: `PaymentTimeline.tsx`
+- Componente visual simples mostrando próximos pagamentos nos próximos 14 dias
+- Marcadores coloridos por urgência
+- Scrollável horizontalmente no mobile
 
-### 5. Dívidas e Parcelamentos
-- Cards por dívida: nome, progresso visual (barra), parcelas pagas/total
-- Valor restante e impacto mensal
-- Resumo no topo: total de dívidas, impacto mensal total
-- Adicionar/editar dívida com formulário
-
-### 6. Cartões de Crédito
-- Card visual por cartão (com cor customizada e últimos dígitos)
-- Fatura atual: valor total ou lista de gastos detalhados
-- Próximo vencimento e dias restantes
-- Adicionar gastos ao cartão
-
-### 7. Alertas Visuais (integrado em todas as telas)
-- Banner no Dashboard para contas vencidas (vermelho)
-- Badges nos itens próximos do vencimento
-- Indicador de comprometimento: verde (<50%), amarelo (50-80%), vermelho (>80%)
-- Toast notifications para ações
+### 6. Dados resilientes
+- Garantir que todos os componentes funcionem com dados parciais (nullish coalescing em todos os campos opcionais)
+- Formulários aceitam submissão mesmo sem categoria ou data de vencimento
 
 ---
 
-## 🧠 Lógica de Cálculos Automáticos
-- **Saldo atual** = soma entradas pagas - soma saídas pagas (mês atual)
-- **Saldo projetado** = saldo atual - contas pendentes do mês
-- **Comprometimento** = (total saídas + parcelas) / total entradas × 100
-- **Impacto parcelamentos** = soma de todas parcelas ativas no mês
-
----
-
-## 🎨 Design System
-- Cores de alerta: vermelho (destructive), amarelo (#EAB308), verde (#22C55E)
-- Prioridades: Essencial (vermelho), Crítico (laranja), Importante (azul), Opcional (cinza)
-- Cards com bordas suaves, sombras sutis
-- Tipografia clara com hierarquia definida
-- Dark/Light mode com toggle
-
----
-
-## 🏗️ Estrutura de Componentes
-- `components/layout/` — BottomNav, Header, ThemeToggle
-- `components/dashboard/` — SummaryCards, UpcomingBills, Charts
-- `components/transactions/` — TransactionList, TransactionForm, FilterBar
-- `components/debts/` — DebtCard, DebtForm, InstallmentProgress
-- `components/cards/` — CreditCardVisual, CardExpenseList, CardForm
-- `components/shared/` — PriorityBadge, StatusBadge, AlertBanner, MoneyInput
-- `pages/` — Dashboard, Transactions, Debts, CreditCards, Settings
-- `hooks/` — useFinanceSummary, useUpcomingBills, useDebts, useCards
-
----
-
-## Implementação em Fases
-**Fase 1:** Setup do banco, autenticação, categorias, tema dark/light
-**Fase 2:** Dashboard + Transações (CRUD completo)
-**Fase 3:** Contas fixas + Sistema de prioridades + Alertas visuais
-**Fase 4:** Dívidas e parcelamentos
-**Fase 5:** Cartões de crédito
-**Fase 6:** Gráficos, cálculos automáticos, dados de exemplo
+## Arquivos modificados
+- `src/components/transactions/TransactionForm.tsx` — condicionar campos por tipo
+- `src/pages/Dashboard.tsx` — redesign com foco em contas a pagar
+- `src/pages/Transactions.tsx` — diferenciação visual entrada/saída
+- `src/hooks/useFinanceData.ts` — novo hook `useUpcomingPayments`
+- `src/components/dashboard/PaymentTimeline.tsx` — novo componente
+- `src/lib/format.ts` — helper para urgência por data (já existe parcialmente)
 
