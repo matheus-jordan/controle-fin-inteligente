@@ -1,46 +1,43 @@
 import { AppLayout } from '@/components/layout/AppLayout';
-import { useFinanceSummary, useTransactions, useFixedBills } from '@/hooks/useFinanceData';
-import { formatCurrency, getDaysUntilDue, getDueDateStatus, getCompromiseLevel } from '@/lib/format';
+import { useFinanceSummary, useUpcomingPayments, useUpdateTransaction } from '@/hooks/useFinanceData';
+import { formatCurrency } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
-import { StatusBadge } from '@/components/shared/StatusBadge';
-import { TrendingUp, TrendingDown, Wallet, AlertTriangle, Target, ArrowRight } from 'lucide-react';
+import { PaymentTimeline } from '@/components/dashboard/PaymentTimeline';
+import { TrendingUp, TrendingDown, PiggyBank, Check, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { useNavigate } from 'react-router-dom';
-
-const CHART_COLORS = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#A855F7', '#EC4899', '#6366F1', '#14B8A6', '#6B7280'];
+import { toast } from 'sonner';
 
 export default function Dashboard() {
   const summary = useFinanceSummary();
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-  const { data: transactions } = useTransactions(currentMonth);
-  const { data: fixedBills } = useFixedBills();
-  const navigate = useNavigate();
+  const { payments, isLoading } = useUpcomingPayments();
+  const updateTransaction = useUpdateTransaction();
 
-  const compromiseLevel = getCompromiseLevel(summary.compromisePercentage);
-  const compromiseColor = compromiseLevel === 'safe' ? 'text-success' : compromiseLevel === 'attention' ? 'text-warning' : 'text-destructive';
+  const overdueCount = payments.filter(p => p.status === 'pending' && p.urgency === 'overdue').length;
+  const pendingPayments = payments.filter(p => p.status === 'pending');
 
-  // Upcoming bills
-  const upcomingBills = (fixedBills ?? [])
-    .filter(b => b.is_active)
-    .map(b => ({ ...b, daysUntil: getDaysUntilDue(b.due_day), dueDateStatus: getDueDateStatus(getDaysUntilDue(b.due_day)) }))
-    .sort((a, b) => a.daysUntil - b.daysUntil)
-    .slice(0, 5);
+  const handleMarkPaid = async (payment: typeof payments[0]) => {
+    if (payment.source !== 'transaction') return;
+    try {
+      await updateTransaction.mutateAsync({ id: payment.id, status: 'paid' });
+      toast.success(`${payment.name} marcado como pago!`);
+    } catch {
+      toast.error('Erro ao atualizar');
+    }
+  };
 
-  // Category breakdown for pie chart
-  const categoryTotals = (transactions ?? [])
-    .filter(t => t.type === 'expense' && t.categories)
-    .reduce((acc, t) => {
-      const name = t.categories?.name ?? 'Outros';
-      acc[name] = (acc[name] || 0) + Number(t.amount);
-      return acc;
-    }, {} as Record<string, number>);
-  const pieData = Object.entries(categoryTotals).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  const urgencyBorder = (urgency: string) => {
+    if (urgency === 'overdue' || urgency === 'urgent') return 'border-l-destructive';
+    if (urgency === 'warning') return 'border-l-warning';
+    return 'border-l-success';
+  };
 
-  // Overdue transactions
-  const overdueCount = (transactions ?? []).filter(t => t.status === 'pending' && t.due_date && new Date(t.due_date) < now).length;
+  const urgencyLabel = (daysUntil: number) => {
+    if (daysUntil < 0) return `${Math.abs(daysUntil)}d atrás`;
+    if (daysUntil === 0) return 'Hoje';
+    if (daysUntil === 1) return 'Amanhã';
+    return `em ${daysUntil}d`;
+  };
 
   return (
     <AppLayout>
@@ -53,129 +50,99 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="col-span-2">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">Saldo Atual</p>
-                <p className={cn('text-2xl font-bold font-mono', summary.balance >= 0 ? 'money-positive' : 'money-negative')}>
-                  {formatCurrency(summary.balance)}
-                </p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Projetado: {formatCurrency(summary.projectedBalance)}
-                </p>
-              </div>
-              <Wallet className="h-8 w-8 text-primary opacity-50" />
+        {/* Summary Cards — 3 compact */}
+        <div className="grid grid-cols-3 gap-2">
+          <Card>
+            <CardContent className="p-3 text-center">
+              <TrendingUp className="h-4 w-4 text-success mx-auto mb-1" />
+              <p className="text-[10px] text-muted-foreground">Entradas</p>
+              <p className="text-sm font-bold font-mono money-positive">{formatCurrency(summary.income)}</p>
             </CardContent>
           </Card>
-
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="h-4 w-4 text-success" />
-                <span className="text-xs text-muted-foreground">Entradas</span>
-              </div>
-              <p className="text-lg font-bold font-mono money-positive">{formatCurrency(summary.income)}</p>
+            <CardContent className="p-3 text-center">
+              <TrendingDown className="h-4 w-4 text-destructive mx-auto mb-1" />
+              <p className="text-[10px] text-muted-foreground">Saídas</p>
+              <p className="text-sm font-bold font-mono money-negative">{formatCurrency(summary.expenses)}</p>
             </CardContent>
           </Card>
-
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="h-4 w-4 text-destructive" />
-                <span className="text-xs text-muted-foreground">Saídas</span>
-              </div>
-              <p className="text-lg font-bold font-mono money-negative">{formatCurrency(summary.expenses)}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Target className="h-4 w-4 text-primary" />
-                <span className="text-xs text-muted-foreground">Comprometido</span>
-              </div>
-              <p className={cn('text-lg font-bold font-mono', compromiseColor)}>
-                {summary.compromisePercentage.toFixed(0)}%
+            <CardContent className="p-3 text-center">
+              <PiggyBank className="h-4 w-4 text-primary mx-auto mb-1" />
+              <p className="text-[10px] text-muted-foreground">Restante</p>
+              <p className={cn('text-sm font-bold font-mono', summary.estimatedRemaining >= 0 ? 'money-positive' : 'money-negative')}>
+                {formatCurrency(summary.estimatedRemaining)}
               </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="h-4 w-4 text-warning" />
-                <span className="text-xs text-muted-foreground">Dívidas</span>
-              </div>
-              <p className="text-lg font-bold font-mono text-foreground">{formatCurrency(summary.totalDebt)}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Upcoming Bills */}
-        {upcomingBills.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm">Próximos Vencimentos</h3>
-                <button onClick={() => navigate('/transactions')} className="text-xs text-primary flex items-center gap-1">
-                  Ver todos <ArrowRight className="h-3 w-3" />
-                </button>
-              </div>
-              <div className="space-y-2">
-                {upcomingBills.map(bill => {
-                  const statusColor = bill.dueDateStatus === 'overdue' ? 'border-l-destructive' :
-                    bill.dueDateStatus === 'urgent' ? 'border-l-destructive' :
-                    bill.dueDateStatus === 'warning' ? 'border-l-warning' : 'border-l-success';
-                  return (
-                    <div key={bill.id} className={cn('flex items-center justify-between py-2 pl-3 border-l-2 rounded-r-md', statusColor)}>
-                      <div>
-                        <p className="text-sm font-medium">{bill.name}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Dia {bill.due_day} • {bill.daysUntil < 0 ? `${Math.abs(bill.daysUntil)} dias atrás` : bill.daysUntil === 0 ? 'Hoje' : `em ${bill.daysUntil} dias`}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold font-mono">{formatCurrency(Number(bill.amount))}</p>
-                        <PriorityBadge priority={bill.priority} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Payment Timeline */}
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-sm mb-3">📅 Linha do Tempo</h3>
+            <PaymentTimeline payments={payments} />
+          </CardContent>
+        </Card>
 
-        {/* Category Pie Chart */}
-        {pieData.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold text-sm mb-3">Gastos por Categoria</h3>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2}>
-                      {pieData.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {pieData.slice(0, 6).map((item, i) => (
-                  <div key={item.name} className="flex items-center gap-1 text-[10px]">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
-                    <span className="text-muted-foreground">{item.name}</span>
+        {/* Bills to Pay — Main section */}
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-sm mb-3">
+              Contas a Pagar
+              {pendingPayments.length > 0 && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  ({pendingPayments.length} pendente{pendingPayments.length > 1 ? 's' : ''})
+                </span>
+              )}
+            </h3>
+
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Carregando...</p>
+            ) : pendingPayments.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Tudo em dia! 🎉</p>
+            ) : (
+              <div className="space-y-2">
+                {pendingPayments.map(p => (
+                  <div
+                    key={p.id}
+                    className={cn(
+                      'flex items-center justify-between py-2.5 pl-3 pr-2 border-l-2 rounded-r-md bg-card hover:bg-accent/50 transition-colors',
+                      urgencyBorder(p.urgency)
+                    )}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <PriorityBadge priority={p.priority} />
+                      </div>
+                      <p className={cn(
+                        'text-[10px] font-medium mt-0.5',
+                        p.urgency === 'overdue' || p.urgency === 'urgent' ? 'text-destructive' :
+                        p.urgency === 'warning' ? 'text-warning' : 'text-muted-foreground'
+                      )}>
+                        {urgencyLabel(p.daysUntil)}
+                        {p.source === 'fixed_bill' && ' • Conta fixa'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold font-mono">{formatCurrency(p.amount)}</p>
+                      {p.source === 'transaction' && (
+                        <button
+                          onClick={() => handleMarkPaid(p)}
+                          className="p-1.5 rounded-md hover:bg-success/10 transition-colors"
+                          title="Marcar como pago"
+                        >
+                          <Check className="h-4 w-4 text-muted-foreground hover:text-success" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );

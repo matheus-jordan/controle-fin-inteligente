@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getDaysUntilDue, getDueDateStatus } from '@/lib/format';
 
 export function useCategories() {
   return useQuery({
@@ -59,8 +60,8 @@ export function useCreateTransaction() {
 export function useUpdateTransaction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; [key: string]: any }) => {
-      const { error } = await supabase.from('transactions').update(data).eq('id', id);
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const { error } = await supabase.from('transactions').update({ status }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
@@ -96,7 +97,14 @@ export function useCreateFixedBill() {
   const { user } = useAuth();
   return useMutation({
     mutationFn: async (data: { name: string; amount: number; due_day: number; priority: string; category_id?: string }) => {
-      const { error } = await supabase.from('fixed_bills').insert({ ...data, user_id: user!.id } as any);
+      const { error } = await supabase.from('fixed_bills').insert({
+        name: data.name,
+        amount: data.amount,
+        due_day: data.due_day,
+        priority: data.priority as 'essential' | 'critical' | 'important' | 'optional',
+        category_id: data.category_id,
+        user_id: user!.id,
+      });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['fixed_bills'] }),
@@ -124,7 +132,16 @@ export function useCreateDebt() {
       name: string; total_amount: number; interest_rate?: number;
       total_installments: number; installment_amount: number; priority: string; start_date: string;
     }) => {
-      const { error } = await supabase.from('debts').insert({ ...data, user_id: user!.id } as any);
+      const { error } = await supabase.from('debts').insert({
+        name: data.name,
+        total_amount: data.total_amount,
+        interest_rate: data.interest_rate,
+        total_installments: data.total_installments,
+        installment_amount: data.installment_amount,
+        priority: data.priority as 'essential' | 'critical' | 'important' | 'optional',
+        start_date: data.start_date,
+        user_id: user!.id,
+      });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['debts'] }),
@@ -134,8 +151,11 @@ export function useCreateDebt() {
 export function useUpdateDebt() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; [key: string]: any }) => {
-      const { error } = await supabase.from('debts').update(data).eq('id', id);
+    mutationFn: async ({ id, paid_installments, status }: { id: string; paid_installments?: number; status?: string }) => {
+      const updateData: Record<string, unknown> = {};
+      if (paid_installments !== undefined) updateData.paid_installments = paid_installments;
+      if (status !== undefined) updateData.status = status;
+      const { error } = await supabase.from('debts').update(updateData as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['debts'] }),
@@ -194,27 +214,95 @@ export function useCreateCardExpense() {
   });
 }
 
+export interface UpcomingPayment {
+  id: string;
+  name: string;
+  amount: number;
+  dueDate: Date;
+  daysUntil: number;
+  urgency: 'overdue' | 'urgent' | 'warning' | 'ok';
+  priority: 'essential' | 'critical' | 'important' | 'optional';
+  source: 'transaction' | 'fixed_bill';
+  status: 'pending' | 'paid';
+}
+
+export function useUpcomingPayments() {
+  const { user } = useAuth();
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+  const transactions = useTransactions(currentMonth);
+  const fixedBills = useFixedBills();
+
+  const payments: UpcomingPayment[] = [];
+
+  // Add pending expense transactions
+  (transactions.data ?? [])
+    .filter(t => t.type === 'expense')
+    .forEach(t => {
+      const dueDate = t.due_date ? new Date(t.due_date + 'T00:00:00') : new Date(t.date + 'T00:00:00');
+      const diffTime = dueDate.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      payments.push({
+        id: t.id,
+        name: t.description,
+        amount: Number(t.amount),
+        dueDate,
+        daysUntil,
+        urgency: getDueDateStatus(daysUntil),
+        priority: t.priority,
+        source: 'transaction',
+        status: t.status as 'pending' | 'paid',
+      });
+    });
+
+  // Add active fixed bills
+  (fixedBills.data ?? [])
+    .filter(b => b.is_active)
+    .forEach(b => {
+      const daysUntil = getDaysUntilDue(b.due_day);
+      const dueDate = new Date(now.getFullYear(), now.getMonth(), b.due_day);
+      if (dueDate < now) dueDate.setMonth(dueDate.getMonth() + 1);
+      payments.push({
+        id: `bill-${b.id}`,
+        name: b.name,
+        amount: Number(b.amount),
+        dueDate,
+        daysUntil,
+        urgency: getDueDateStatus(daysUntil),
+        priority: b.priority,
+        source: 'fixed_bill',
+        status: 'pending',
+      });
+    });
+
+  // Sort: pending first, then by due date, then by priority
+  const priorityOrder = { essential: 0, critical: 1, important: 2, optional: 3 };
+  payments.sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
+    if (a.daysUntil !== b.daysUntil) return a.daysUntil - b.daysUntil;
+    return (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
+  });
+
+  return {
+    payments,
+    isLoading: transactions.isLoading || fixedBills.isLoading,
+  };
+}
+
 export function useFinanceSummary() {
   const { user } = useAuth();
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   const transactions = useTransactions(currentMonth);
-  const debts = useDebts();
-  const fixedBills = useFixedBills();
 
-  const income = (transactions.data ?? []).filter(t => t.type === 'income' && t.status === 'paid').reduce((s, t) => s + Number(t.amount), 0);
-  const expenses = (transactions.data ?? []).filter(t => t.type === 'expense' && t.status === 'paid').reduce((s, t) => s + Number(t.amount), 0);
-  const pendingExpenses = (transactions.data ?? []).filter(t => t.type === 'expense' && t.status === 'pending').reduce((s, t) => s + Number(t.amount), 0);
-  const totalDebt = (debts.data ?? []).filter(d => d.status === 'active').reduce((s, d) => s + Number(d.total_amount) - (Number(d.installment_amount) * d.paid_installments), 0);
-  const monthlyDebtImpact = (debts.data ?? []).filter(d => d.status === 'active').reduce((s, d) => s + Number(d.installment_amount), 0);
-  const balance = income - expenses;
-  const projectedBalance = balance - pendingExpenses;
-  const totalCommitted = expenses + pendingExpenses + monthlyDebtImpact;
-  const compromisePercentage = income > 0 ? (totalCommitted / income) * 100 : 0;
+  const income = (transactions.data ?? []).filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+  const expenses = (transactions.data ?? []).filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+  const estimatedRemaining = income - expenses;
 
   return {
-    income, expenses, balance, projectedBalance, totalDebt, monthlyDebtImpact,
-    compromisePercentage, pendingExpenses,
-    isLoading: transactions.isLoading || debts.isLoading || fixedBills.isLoading,
+    income,
+    expenses,
+    estimatedRemaining,
+    isLoading: transactions.isLoading,
   };
 }
