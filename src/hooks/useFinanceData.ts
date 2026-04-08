@@ -68,6 +68,34 @@ export function useUpdateTransaction() {
   });
 }
 
+export function useUpdateTransactionFull() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (data: {
+      id: string;
+      description: string;
+      amount: number;
+      type: 'income' | 'expense';
+      category_id?: string;
+      date: string;
+      due_date?: string;
+      priority: 'essential' | 'critical' | 'important' | 'optional';
+      status: string;
+      is_recurring?: boolean;
+      recurrence_interval?: 'monthly' | 'weekly' | 'biweekly' | 'yearly';
+    }) => {
+      const { id, ...rest } = data;
+      const { error } = await supabase.from('transactions').update({
+        ...rest,
+        user_id: user!.id,
+      } as any).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
+  });
+}
+
 export function useDeleteTransaction() {
   const qc = useQueryClient();
   return useMutation({
