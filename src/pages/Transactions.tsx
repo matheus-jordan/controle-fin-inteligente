@@ -8,10 +8,10 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, Check, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, Check, Search, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { TransactionForm } from '@/components/transactions/TransactionForm';
+import { TransactionForm, type TransactionToEdit } from '@/components/transactions/TransactionForm';
 
 export default function Transactions() {
   const [monthOffset, setMonthOffset] = useState(0);
@@ -19,6 +19,7 @@ export default function Transactions() {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<TransactionToEdit | null>(null);
 
   const now = new Date();
   const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
@@ -52,6 +53,28 @@ export default function Transactions() {
     } catch {
       toast.error('Erro ao excluir');
     }
+  };
+
+  const handleEdit = (t: any) => {
+    setEditingTransaction({
+      id: t.id,
+      type: t.type,
+      amount: Number(t.amount),
+      description: t.description,
+      category_id: t.category_id,
+      date: t.date,
+      due_date: t.due_date,
+      priority: t.priority,
+      status: t.status,
+      is_recurring: t.is_recurring,
+      recurrence_interval: t.recurrence_interval,
+    });
+    setShowForm(true);
+  };
+
+  const handleNewTransaction = () => {
+    setEditingTransaction(null);
+    setShowForm(true);
   };
 
   return (
@@ -109,6 +132,7 @@ export default function Transactions() {
           <div className="space-y-2">
             {filtered.map(t => {
               const isIncome = t.type === 'income';
+              const displayDate = isIncome ? t.date : (t.due_date || t.date);
               return (
                 <Card key={t.id}>
                   <CardContent className="p-3 flex items-center gap-3">
@@ -125,7 +149,10 @@ export default function Transactions() {
                             <span className="text-[10px] text-muted-foreground">•</span>
                           </>
                         )}
-                        <span className="text-[10px] text-muted-foreground">{formatDate(t.date)}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {!isIncome && 'Vence '}
+                          {formatDate(displayDate)}
+                        </span>
                         {isIncome && t.is_recurring && (
                           <>
                             <span className="text-[10px] text-muted-foreground">•</span>
@@ -134,7 +161,7 @@ export default function Transactions() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right flex items-center gap-2">
+                    <div className="text-right flex items-center gap-1">
                       <div>
                         <p className={cn('text-sm font-bold font-mono', isIncome ? 'money-positive' : 'money-negative')}>
                           {isIncome ? '+' : '-'}{formatCurrency(Number(t.amount))}
@@ -142,6 +169,9 @@ export default function Transactions() {
                         {!isIncome && <StatusBadge status={t.status as any} />}
                       </div>
                       <div className="flex flex-col gap-1">
+                        <button onClick={() => handleEdit(t)} className="p-1 rounded hover:bg-muted">
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
                         {!isIncome && (
                           <button onClick={() => handleTogglePaid(t.id, t.status)} className="p-1 rounded hover:bg-muted">
                             <Check className={cn('h-3.5 w-3.5', t.status === 'paid' ? 'text-success' : 'text-muted-foreground')} />
@@ -160,7 +190,14 @@ export default function Transactions() {
         )}
       </div>
 
-      <TransactionForm open={showForm} onOpenChange={setShowForm} />
+      <TransactionForm
+        open={showForm}
+        onOpenChange={(open) => {
+          setShowForm(open);
+          if (!open) setEditingTransaction(null);
+        }}
+        editTransaction={editingTransaction}
+      />
     </AppLayout>
   );
 }

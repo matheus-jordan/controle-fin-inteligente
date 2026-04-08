@@ -50,27 +50,27 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Summary Cards — 3 compact */}
+        {/* Summary Cards — responsive */}
         <div className="grid grid-cols-3 gap-2">
           <Card>
-            <CardContent className="p-3 text-center">
-              <TrendingUp className="h-4 w-4 text-success mx-auto mb-1" />
-              <p className="text-[10px] text-muted-foreground">Entradas</p>
-              <p className="text-sm font-bold font-mono money-positive">{formatCurrency(summary.income)}</p>
+            <CardContent className="p-2 sm:p-3 text-center">
+              <TrendingUp className="h-4 w-4 text-success mx-auto mb-0.5" />
+              <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Entradas</p>
+              <p className="text-xs sm:text-sm font-bold font-mono money-positive truncate">{formatCurrency(summary.income)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-3 text-center">
-              <TrendingDown className="h-4 w-4 text-destructive mx-auto mb-1" />
-              <p className="text-[10px] text-muted-foreground">Saídas</p>
-              <p className="text-sm font-bold font-mono money-negative">{formatCurrency(summary.expenses)}</p>
+            <CardContent className="p-2 sm:p-3 text-center">
+              <TrendingDown className="h-4 w-4 text-destructive mx-auto mb-0.5" />
+              <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Saídas</p>
+              <p className="text-xs sm:text-sm font-bold font-mono money-negative truncate">{formatCurrency(summary.expenses)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-3 text-center">
-              <PiggyBank className="h-4 w-4 text-primary mx-auto mb-1" />
-              <p className="text-[10px] text-muted-foreground">Restante</p>
-              <p className={cn('text-sm font-bold font-mono', summary.estimatedRemaining >= 0 ? 'money-positive' : 'money-negative')}>
+            <CardContent className="p-2 sm:p-3 text-center">
+              <PiggyBank className="h-4 w-4 text-primary mx-auto mb-0.5" />
+              <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Restante</p>
+              <p className={cn('text-xs sm:text-sm font-bold font-mono truncate', summary.estimatedRemaining >= 0 ? 'money-positive' : 'money-negative')}>
                 {formatCurrency(summary.estimatedRemaining)}
               </p>
             </CardContent>
