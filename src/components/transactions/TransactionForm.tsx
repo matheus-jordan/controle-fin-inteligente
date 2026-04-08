@@ -1,17 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { useCategories, useCreateTransaction } from '@/hooks/useFinanceData';
+import { useCategories, useCreateTransaction, useUpdateTransactionFull } from '@/hooks/useFinanceData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+export interface TransactionToEdit {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  description: string;
+  category_id: string | null;
+  date: string;
+  due_date: string | null;
+  priority: string;
+  status: string;
+  is_recurring: boolean;
+  recurrence_interval: string | null;
+}
 
 interface TransactionFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  editTransaction?: TransactionToEdit | null;
 }
 
 const priorities = [
@@ -21,7 +36,7 @@ const priorities = [
   { value: 'optional', label: 'Opcional', color: 'bg-muted text-muted-foreground' },
 ];
 
-export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
+export function TransactionForm({ open, onOpenChange, editTransaction }: TransactionFormProps) {
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -29,15 +44,36 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [priority, setPriority] = useState('optional');
   const [status, setStatus] = useState('pending');
-  const [dueDate, setDueDate] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceInterval, setRecurrenceInterval] = useState<string>('monthly');
 
   const { data: categories } = useCategories();
   const createTransaction = useCreateTransaction();
+  const updateTransaction = useUpdateTransactionFull();
 
+  const isEditing = !!editTransaction;
   const filteredCategories = categories?.filter(c => c.type === type) ?? [];
   const isIncome = type === 'income';
+
+  // Populate form when editing
+  useEffect(() => {
+    if (editTransaction) {
+      setType(editTransaction.type);
+      setAmount(String(editTransaction.amount));
+      setDescription(editTransaction.description);
+      setCategoryId(editTransaction.category_id || '');
+      // For expenses, use due_date as the main date; for incomes use date
+      setDate(editTransaction.type === 'expense'
+        ? (editTransaction.due_date || editTransaction.date)
+        : editTransaction.date);
+      setPriority(editTransaction.priority);
+      setStatus(editTransaction.status);
+      setIsRecurring(editTransaction.is_recurring);
+      setRecurrenceInterval(editTransaction.recurrence_interval || 'monthly');
+    } else {
+      resetForm();
+    }
+  }, [editTransaction, open]);
 
   const handleSubmit = async () => {
     if (!amount || !description) {
@@ -45,21 +81,28 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
       return;
     }
 
+    const payload = {
+      description,
+      amount: parseFloat(amount),
+      type,
+      category_id: categoryId || undefined,
+      // Incomes: date is the transaction date. Expenses: date = due_date (vencimento)
+      date: isIncome ? date : date,
+      due_date: isIncome ? undefined : date,
+      priority: isIncome ? 'optional' : priority as any,
+      status: isIncome ? 'paid' : status,
+      is_recurring: isRecurring,
+      recurrence_interval: isRecurring ? recurrenceInterval as any : undefined,
+    };
+
     try {
-      await createTransaction.mutateAsync({
-        description,
-        amount: parseFloat(amount),
-        type,
-        category_id: categoryId || undefined,
-        date,
-        // Incomes: auto-set paid, optional priority, no due_date
-        priority: isIncome ? 'optional' : priority as any,
-        status: isIncome ? 'paid' : status,
-        due_date: isIncome ? undefined : (dueDate || undefined),
-        is_recurring: isRecurring,
-        recurrence_interval: isRecurring ? recurrenceInterval as any : undefined,
-      });
-      toast.success(isIncome ? 'Entrada registrada!' : 'Saída registrada!');
+      if (isEditing) {
+        await updateTransaction.mutateAsync({ id: editTransaction!.id, ...payload });
+        toast.success('Transação atualizada!');
+      } else {
+        await createTransaction.mutateAsync(payload);
+        toast.success(isIncome ? 'Entrada registrada!' : 'Saída registrada!');
+      }
       resetForm();
       onOpenChange(false);
     } catch {
@@ -68,38 +111,41 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
   };
 
   const resetForm = () => {
+    setType('expense');
     setAmount('');
     setDescription('');
     setCategoryId('');
     setDate(new Date().toISOString().split('T')[0]);
     setPriority('optional');
     setStatus('pending');
-    setDueDate('');
     setIsRecurring(false);
+    setRecurrenceInterval('monthly');
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Nova Transação</SheetTitle>
+          <SheetTitle>{isEditing ? 'Editar Transação' : 'Nova Transação'}</SheetTitle>
         </SheetHeader>
 
         <div className="space-y-4 mt-4">
-          {/* Type Toggle */}
+          {/* Type Toggle — disabled when editing */}
           <div className="flex rounded-lg bg-muted p-1 gap-1">
             <button
-              onClick={() => setType('expense')}
+              onClick={() => !isEditing && setType('expense')}
               className={cn('flex-1 py-2 rounded-md text-sm font-medium transition-colors',
-                type === 'expense' ? 'bg-destructive text-destructive-foreground' : 'text-muted-foreground'
+                type === 'expense' ? 'bg-destructive text-destructive-foreground' : 'text-muted-foreground',
+                isEditing && 'opacity-60 cursor-not-allowed'
               )}
             >
               Saída
             </button>
             <button
-              onClick={() => setType('income')}
+              onClick={() => !isEditing && setType('income')}
               className={cn('flex-1 py-2 rounded-md text-sm font-medium transition-colors',
-                type === 'income' ? 'bg-success text-success-foreground' : 'text-muted-foreground'
+                type === 'income' ? 'bg-success text-success-foreground' : 'text-muted-foreground',
+                isEditing && 'opacity-60 cursor-not-allowed'
               )}
             >
               Entrada
@@ -145,13 +191,13 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
             </Select>
           </div>
 
-          {/* Date */}
+          {/* Single date field: "Data" for incomes, "Vencimento" for expenses */}
           <div>
-            <Label>Data</Label>
+            <Label>{isIncome ? 'Data' : 'Vencimento'}</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1" />
           </div>
 
-          {/* Recurring - shown for both */}
+          {/* Recurring */}
           <div className="flex items-center justify-between">
             <Label>Recorrente?</Label>
             <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
@@ -174,12 +220,6 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
           {/* Expense-only fields */}
           {!isIncome && (
             <>
-              {/* Due Date */}
-              <div>
-                <Label>Vencimento</Label>
-                <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1" />
-              </div>
-
               {/* Priority */}
               <div>
                 <Label>Prioridade</Label>
@@ -206,8 +246,14 @@ export function TransactionForm({ open, onOpenChange }: TransactionFormProps) {
             </>
           )}
 
-          <Button onClick={handleSubmit} className="w-full h-12 text-base" disabled={createTransaction.isPending}>
-            {createTransaction.isPending ? 'Salvando...' : 'Salvar Transação'}
+          <Button
+            onClick={handleSubmit}
+            className="w-full h-12 text-base"
+            disabled={createTransaction.isPending || updateTransaction.isPending}
+          >
+            {(createTransaction.isPending || updateTransaction.isPending)
+              ? 'Salvando...'
+              : isEditing ? 'Atualizar' : 'Salvar Transação'}
           </Button>
         </div>
       </SheetContent>
