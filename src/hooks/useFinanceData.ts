@@ -24,7 +24,8 @@ export function useTransactions(month?: string) {
         const start = `${month}-01`;
         const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
         const end = `${month}-${endDate.getDate().toString().padStart(2, '0')}`;
-        query = query.gte('date', start).lte('date', end);
+        // Filter by date OR due_date in the month range
+        query = query.or(`and(date.gte.${start},date.lte.${end}),and(due_date.gte.${start},due_date.lte.${end})`);
       }
       const { data, error } = await query;
       if (error) throw error;
@@ -46,7 +47,7 @@ export function useCreateTransaction() {
       date: string;
       priority: 'essential' | 'critical' | 'important' | 'optional';
       status: string;
-      due_date?: string;
+      due_date?: string | null;
       is_recurring?: boolean;
       recurrence_interval?: 'monthly' | 'weekly' | 'biweekly' | 'yearly';
     }) => {
@@ -79,7 +80,7 @@ export function useUpdateTransactionFull() {
       type: 'income' | 'expense';
       category_id?: string;
       date: string;
-      due_date?: string;
+      due_date?: string | null;
       priority: 'essential' | 'critical' | 'important' | 'optional';
       status: string;
       is_recurring?: boolean;
@@ -246,50 +247,64 @@ export interface UpcomingPayment {
   id: string;
   name: string;
   amount: number;
-  dueDate: Date;
-  daysUntil: number;
-  urgency: 'overdue' | 'urgent' | 'warning' | 'ok';
+  dueDate: Date | null;
+  daysUntil: number | null;
+  urgency: 'overdue' | 'urgent' | 'warning' | 'ok' | 'none';
   priority: 'essential' | 'critical' | 'important' | 'optional';
   source: 'transaction' | 'fixed_bill';
   status: 'pending' | 'paid';
 }
 
-export function useUpcomingPayments() {
+export function useUpcomingPayments(month?: string) {
   const { user } = useAuth();
   const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-  const transactions = useTransactions(currentMonth);
+  const targetMonth = month || `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+  const transactions = useTransactions(targetMonth);
   const fixedBills = useFixedBills();
 
   const payments: UpcomingPayment[] = [];
 
-  // Add pending expense transactions
   (transactions.data ?? [])
     .filter(t => t.type === 'expense')
     .forEach(t => {
-      const dueDate = t.due_date ? new Date(t.due_date + 'T00:00:00') : new Date(t.date + 'T00:00:00');
-      const diffTime = dueDate.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const hasDueDate = !!t.due_date;
+      const dueDate = hasDueDate ? new Date(t.due_date + 'T00:00:00') : null;
+      let daysUntil: number | null = null;
+      let urgency: UpcomingPayment['urgency'] = 'none';
+
+      if (dueDate) {
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const diffTime = dueDate.getTime() - today.getTime();
+        daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        urgency = getDueDateStatus(daysUntil);
+      }
+
       payments.push({
         id: t.id,
         name: t.description,
         amount: Number(t.amount),
         dueDate,
         daysUntil,
-        urgency: getDueDateStatus(daysUntil),
+        urgency,
         priority: t.priority,
         source: 'transaction',
         status: t.status as 'pending' | 'paid',
       });
     });
 
-  // Add active fixed bills
+  // Add active fixed bills (only for current/target month)
+  const [yearStr, monthStr] = targetMonth.split('-');
+  const targetYear = parseInt(yearStr);
+  const targetMon = parseInt(monthStr) - 1;
+
   (fixedBills.data ?? [])
     .filter(b => b.is_active)
     .forEach(b => {
-      const daysUntil = getDaysUntilDue(b.due_day);
-      const dueDate = new Date(now.getFullYear(), now.getMonth(), b.due_day);
-      if (dueDate < now) dueDate.setMonth(dueDate.getMonth() + 1);
+      const dueDate = new Date(targetYear, targetMon, b.due_day);
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const diffTime = dueDate.getTime() - today.getTime();
+      const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
       payments.push({
         id: `bill-${b.id}`,
         name: b.name,
@@ -303,11 +318,13 @@ export function useUpcomingPayments() {
       });
     });
 
-  // Sort: pending first, then by due date, then by priority
   const priorityOrder = { essential: 0, critical: 1, important: 2, optional: 3 };
   payments.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
-    if (a.daysUntil !== b.daysUntil) return a.daysUntil - b.daysUntil;
+    // Items without due date go to the end
+    if (a.daysUntil === null && b.daysUntil !== null) return 1;
+    if (a.daysUntil !== null && b.daysUntil === null) return -1;
+    if (a.daysUntil !== null && b.daysUntil !== null && a.daysUntil !== b.daysUntil) return a.daysUntil - b.daysUntil;
     return (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
   });
 
@@ -317,11 +334,11 @@ export function useUpcomingPayments() {
   };
 }
 
-export function useFinanceSummary() {
+export function useFinanceSummary(month?: string) {
   const { user } = useAuth();
   const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-  const transactions = useTransactions(currentMonth);
+  const targetMonth = month || `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+  const transactions = useTransactions(targetMonth);
 
   const income = (transactions.data ?? []).filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
   const expenses = (transactions.data ?? []).filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
