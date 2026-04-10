@@ -19,17 +19,41 @@ export function useTransactions(month?: string) {
   return useQuery({
     queryKey: ['transactions', user?.id, month],
     queryFn: async () => {
-      let query = supabase.from('transactions').select('*, categories(*)').eq('user_id', user!.id).order('date', { ascending: false });
-      if (month) {
-        const start = `${month}-01`;
-        const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
-        const end = `${month}-${endDate.getDate().toString().padStart(2, '0')}`;
-        // Filter by date OR due_date in the month range
-        query = query.or(`and(date.gte.${start},date.lte.${end}),and(due_date.gte.${start},due_date.lte.${end})`);
+      if (!month) {
+        const { data, error } = await supabase.from('transactions').select('*, categories(*)').eq('user_id', user!.id).order('date', { ascending: false });
+        if (error) throw error;
+        return data;
       }
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+
+      const start = `${month}-01`;
+      const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+      const end = `${month}-${endDate.getDate().toString().padStart(2, '0')}`;
+
+      // Fetch by date range OR due_date range (two queries merged to avoid complex OR syntax issues)
+      const { data: byDate, error: e1 } = await supabase
+        .from('transactions')
+        .select('*, categories(*)')
+        .eq('user_id', user!.id)
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false });
+      if (e1) throw e1;
+
+      const { data: byDueDate, error: e2 } = await supabase
+        .from('transactions')
+        .select('*, categories(*)')
+        .eq('user_id', user!.id)
+        .gte('due_date', start)
+        .lte('due_date', end)
+        .order('date', { ascending: false });
+      if (e2) throw e2;
+
+      // Merge and deduplicate by id
+      const map = new Map<string, typeof byDate[0]>();
+      for (const t of [...(byDate ?? []), ...(byDueDate ?? [])]) {
+        map.set(t.id, t);
+      }
+      return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
     },
     enabled: !!user,
   });
@@ -256,7 +280,6 @@ export interface UpcomingPayment {
 }
 
 export function useUpcomingPayments(month?: string) {
-  const { user } = useAuth();
   const now = new Date();
   const targetMonth = month || `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   const transactions = useTransactions(targetMonth);
@@ -292,7 +315,6 @@ export function useUpcomingPayments(month?: string) {
       });
     });
 
-  // Add active fixed bills (only for current/target month)
   const [yearStr, monthStr] = targetMonth.split('-');
   const targetYear = parseInt(yearStr);
   const targetMon = parseInt(monthStr) - 1;
@@ -321,7 +343,6 @@ export function useUpcomingPayments(month?: string) {
   const priorityOrder = { essential: 0, critical: 1, important: 2, optional: 3 };
   payments.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
-    // Items without due date go to the end
     if (a.daysUntil === null && b.daysUntil !== null) return 1;
     if (a.daysUntil !== null && b.daysUntil === null) return -1;
     if (a.daysUntil !== null && b.daysUntil !== null && a.daysUntil !== b.daysUntil) return a.daysUntil - b.daysUntil;
@@ -335,19 +356,30 @@ export function useUpcomingPayments(month?: string) {
 }
 
 export function useFinanceSummary(month?: string) {
-  const { user } = useAuth();
   const now = new Date();
   const targetMonth = month || `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   const transactions = useTransactions(targetMonth);
 
-  const income = (transactions.data ?? []).filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
-  const expenses = (transactions.data ?? []).filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
-  const estimatedRemaining = income - expenses;
+  const allTx = transactions.data ?? [];
+  const incomes = allTx.filter(t => t.type === 'income');
+  const expenses = allTx.filter(t => t.type === 'expense');
+
+  const totalIncome = incomes.reduce((s, t) => s + Number(t.amount), 0);
+  const totalExpenses = expenses.reduce((s, t) => s + Number(t.amount), 0);
+  const paidExpenses = expenses.filter(t => t.status === 'paid').reduce((s, t) => s + Number(t.amount), 0);
+  const pendingExpenses = expenses.filter(t => t.status === 'pending').reduce((s, t) => s + Number(t.amount), 0);
+  const estimatedRemaining = totalIncome - totalExpenses;
 
   return {
-    income,
-    expenses,
+    totalIncome,
+    totalExpenses,
+    paidExpenses,
+    pendingExpenses,
     estimatedRemaining,
+    incomeCount: incomes.length,
+    expenseCount: expenses.length,
+    paidCount: expenses.filter(t => t.status === 'paid').length,
+    pendingCount: expenses.filter(t => t.status === 'pending').length,
     isLoading: transactions.isLoading,
   };
 }

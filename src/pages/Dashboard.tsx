@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { useFinanceSummary, useUpcomingPayments, useUpdateTransaction } from '@/hooks/useFinanceData';
+import { useFinanceSummary, useUpcomingPayments, useUpdateTransaction, useDebts } from '@/hooks/useFinanceData';
 import { formatCurrency } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { PaymentTimeline } from '@/components/dashboard/PaymentTimeline';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, PiggyBank, Check, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Check, AlertTriangle, ChevronLeft, ChevronRight, CircleDollarSign, CheckCircle2, Clock, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -21,9 +21,14 @@ export default function Dashboard() {
   const summary = useFinanceSummary(currentMonth);
   const { payments, isLoading } = useUpcomingPayments(currentMonth);
   const updateTransaction = useUpdateTransaction();
+  const { data: debts } = useDebts();
 
   const overdueCount = payments.filter(p => p.status === 'pending' && p.urgency === 'overdue').length;
   const pendingPayments = payments.filter(p => p.status === 'pending');
+
+  // Debts total
+  const activeDebts = (debts ?? []).filter(d => d.status === 'active');
+  const totalDebtRemaining = activeDebts.reduce((s, d) => s + Number(d.installment_amount) * (d.total_installments - d.paid_installments), 0);
 
   const handleMarkPaid = async (payment: typeof payments[0]) => {
     if (payment.source !== 'transaction') return;
@@ -72,32 +77,73 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-2">
+        {/* Saldo Previsto — hero card */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Wallet className="h-4 w-4 text-primary" />
+              <p className="text-xs text-muted-foreground">Saldo Previsto</p>
+            </div>
+            <p className={cn('text-2xl font-bold font-mono', summary.estimatedRemaining >= 0 ? 'money-positive' : 'money-negative')}>
+              {formatCurrency(summary.estimatedRemaining)}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-1">Entradas cadastradas − Saídas cadastradas</p>
+          </CardContent>
+        </Card>
+
+        {/* Summary Grid — 2x2 */}
+        <div className="grid grid-cols-2 gap-2">
           <Card>
-            <CardContent className="p-2 sm:p-3 text-center">
-              <TrendingUp className="h-4 w-4 text-success mx-auto mb-0.5" />
-              <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Entradas</p>
-              <p className="text-xs sm:text-sm font-bold font-mono money-positive truncate">{formatCurrency(summary.income)}</p>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TrendingUp className="h-3.5 w-3.5 text-success" />
+                <p className="text-[10px] text-muted-foreground">Entradas ({summary.incomeCount})</p>
+              </div>
+              <p className="text-sm font-bold font-mono money-positive">{formatCurrency(summary.totalIncome)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-2 sm:p-3 text-center">
-              <TrendingDown className="h-4 w-4 text-destructive mx-auto mb-0.5" />
-              <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Saídas</p>
-              <p className="text-xs sm:text-sm font-bold font-mono money-negative truncate">{formatCurrency(summary.expenses)}</p>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+                <p className="text-[10px] text-muted-foreground">Saídas ({summary.expenseCount})</p>
+              </div>
+              <p className="text-sm font-bold font-mono money-negative">{formatCurrency(summary.totalExpenses)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-2 sm:p-3 text-center">
-              <PiggyBank className="h-4 w-4 text-primary mx-auto mb-0.5" />
-              <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-tight">Restante</p>
-              <p className={cn('text-xs sm:text-sm font-bold font-mono truncate', summary.estimatedRemaining >= 0 ? 'money-positive' : 'money-negative')}>
-                {formatCurrency(summary.estimatedRemaining)}
-              </p>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                <p className="text-[10px] text-muted-foreground">Pagas ({summary.paidCount})</p>
+              </div>
+              <p className="text-sm font-bold font-mono">{formatCurrency(summary.paidExpenses)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Clock className="h-3.5 w-3.5 text-warning" />
+                <p className="text-[10px] text-muted-foreground">Pendentes ({summary.pendingCount})</p>
+              </div>
+              <p className="text-sm font-bold font-mono text-warning">{formatCurrency(summary.pendingExpenses)}</p>
             </CardContent>
           </Card>
         </div>
+
+        {/* Debts summary */}
+        {activeDebts.length > 0 && (
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Landmark className="h-3.5 w-3.5 text-destructive" />
+                <p className="text-[10px] text-muted-foreground">Dívidas Ativas ({activeDebts.length})</p>
+              </div>
+              <p className="text-sm font-bold font-mono money-negative">{formatCurrency(totalDebtRemaining)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Restante a pagar</p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Payment Timeline */}
         <Card>
@@ -141,8 +187,7 @@ export default function Dashboard() {
                       <p className={cn(
                         'text-[10px] font-medium mt-0.5',
                         p.urgency === 'overdue' || p.urgency === 'urgent' ? 'text-destructive' :
-                        p.urgency === 'warning' ? 'text-warning' :
-                        p.urgency === 'none' ? 'text-muted-foreground' : 'text-muted-foreground'
+                        p.urgency === 'warning' ? 'text-warning' : 'text-muted-foreground'
                       )}>
                         {urgencyLabel(p.daysUntil)}
                         {p.source === 'fixed_bill' && ' • Conta fixa'}
