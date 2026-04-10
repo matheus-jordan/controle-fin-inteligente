@@ -1,16 +1,25 @@
+import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useFinanceSummary, useUpcomingPayments, useUpdateTransaction } from '@/hooks/useFinanceData';
 import { formatCurrency } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { PaymentTimeline } from '@/components/dashboard/PaymentTimeline';
-import { TrendingUp, TrendingDown, PiggyBank, Check, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { TrendingUp, TrendingDown, PiggyBank, Check, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export default function Dashboard() {
-  const summary = useFinanceSummary();
-  const { payments, isLoading } = useUpcomingPayments();
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const now = new Date();
+  const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const currentMonth = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}`;
+  const monthLabel = targetDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const summary = useFinanceSummary(currentMonth);
+  const { payments, isLoading } = useUpcomingPayments(currentMonth);
   const updateTransaction = useUpdateTransaction();
 
   const overdueCount = payments.filter(p => p.status === 'pending' && p.urgency === 'overdue').length;
@@ -29,10 +38,12 @@ export default function Dashboard() {
   const urgencyBorder = (urgency: string) => {
     if (urgency === 'overdue' || urgency === 'urgent') return 'border-l-destructive';
     if (urgency === 'warning') return 'border-l-warning';
+    if (urgency === 'none') return 'border-l-muted-foreground';
     return 'border-l-success';
   };
 
-  const urgencyLabel = (daysUntil: number) => {
+  const urgencyLabel = (daysUntil: number | null) => {
+    if (daysUntil === null) return 'Sem vencimento';
     if (daysUntil < 0) return `${Math.abs(daysUntil)}d atrás`;
     if (daysUntil === 0) return 'Hoje';
     if (daysUntil === 1) return 'Amanhã';
@@ -42,6 +53,17 @@ export default function Dashboard() {
   return (
     <AppLayout>
       <div className="px-4 py-4 space-y-4 max-w-2xl mx-auto">
+        {/* Month Nav */}
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="icon" onClick={() => setMonthOffset(o => o - 1)}>
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <h2 className="font-semibold capitalize">{monthLabel}</h2>
+          <Button variant="ghost" size="icon" onClick={() => setMonthOffset(o => o + 1)}>
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        </div>
+
         {/* Alert Banner */}
         {overdueCount > 0 && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm font-medium">
@@ -50,7 +72,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Summary Cards — responsive */}
+        {/* Summary Cards */}
         <div className="grid grid-cols-3 gap-2">
           <Card>
             <CardContent className="p-2 sm:p-3 text-center">
@@ -85,7 +107,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Bills to Pay — Main section */}
+        {/* Bills to Pay */}
         <Card>
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">
@@ -119,7 +141,8 @@ export default function Dashboard() {
                       <p className={cn(
                         'text-[10px] font-medium mt-0.5',
                         p.urgency === 'overdue' || p.urgency === 'urgent' ? 'text-destructive' :
-                        p.urgency === 'warning' ? 'text-warning' : 'text-muted-foreground'
+                        p.urgency === 'warning' ? 'text-warning' :
+                        p.urgency === 'none' ? 'text-muted-foreground' : 'text-muted-foreground'
                       )}>
                         {urgencyLabel(p.daysUntil)}
                         {p.source === 'fixed_bill' && ' • Conta fixa'}

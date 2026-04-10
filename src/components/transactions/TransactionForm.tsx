@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useCategories, useCreateTransaction, useUpdateTransactionFull } from '@/hooks/useFinanceData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,8 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
   const [status, setStatus] = useState('pending');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceInterval, setRecurrenceInterval] = useState<string>('monthly');
+  const [hasDueDate, setHasDueDate] = useState(true);
+  const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
 
   const { data: categories } = useCategories();
   const createTransaction = useCreateTransaction();
@@ -55,21 +58,19 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
   const filteredCategories = categories?.filter(c => c.type === type) ?? [];
   const isIncome = type === 'income';
 
-  // Populate form when editing
   useEffect(() => {
     if (editTransaction) {
       setType(editTransaction.type);
       setAmount(String(editTransaction.amount));
       setDescription(editTransaction.description);
       setCategoryId(editTransaction.category_id || '');
-      // For expenses, use due_date as the main date; for incomes use date
-      setDate(editTransaction.type === 'expense'
-        ? (editTransaction.due_date || editTransaction.date)
-        : editTransaction.date);
+      setDate(editTransaction.date);
       setPriority(editTransaction.priority);
       setStatus(editTransaction.status);
       setIsRecurring(editTransaction.is_recurring);
       setRecurrenceInterval(editTransaction.recurrence_interval || 'monthly');
+      setHasDueDate(!!editTransaction.due_date);
+      setDueDate(editTransaction.due_date || new Date().toISOString().split('T')[0]);
     } else {
       resetForm();
     }
@@ -86,9 +87,8 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
       amount: parseFloat(amount),
       type,
       category_id: categoryId || undefined,
-      // Incomes: date is the transaction date. Expenses: date = due_date (vencimento)
-      date: isIncome ? date : date,
-      due_date: isIncome ? undefined : date,
+      date: date,
+      due_date: (!isIncome && hasDueDate) ? dueDate : null,
       priority: isIncome ? 'optional' : priority as any,
       status: isIncome ? 'paid' : status,
       is_recurring: isRecurring,
@@ -120,6 +120,8 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
     setStatus('pending');
     setIsRecurring(false);
     setRecurrenceInterval('monthly');
+    setHasDueDate(true);
+    setDueDate(new Date().toISOString().split('T')[0]);
   };
 
   return (
@@ -130,7 +132,7 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
         </SheetHeader>
 
         <div className="space-y-4 mt-4">
-          {/* Type Toggle — disabled when editing */}
+          {/* Type Toggle */}
           <div className="flex rounded-lg bg-muted p-1 gap-1">
             <button
               onClick={() => !isEditing && setType('expense')}
@@ -191,9 +193,9 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
             </Select>
           </div>
 
-          {/* Single date field: "Data" for incomes, "Vencimento" for expenses */}
+          {/* Date — always shown */}
           <div>
-            <Label>{isIncome ? 'Data' : 'Vencimento'}</Label>
+            <Label>{isIncome ? 'Data' : 'Data do registro'}</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1" />
           </div>
 
@@ -220,6 +222,21 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
           {/* Expense-only fields */}
           {!isIncome && (
             <>
+              {/* Due date checkbox + field */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="has-due-date"
+                    checked={hasDueDate}
+                    onCheckedChange={(checked) => setHasDueDate(checked === true)}
+                  />
+                  <Label htmlFor="has-due-date" className="cursor-pointer">Tem data de vencimento?</Label>
+                </div>
+                {hasDueDate && (
+                  <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                )}
+              </div>
+
               {/* Priority */}
               <div>
                 <Label>Prioridade</Label>
