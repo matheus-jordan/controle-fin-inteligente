@@ -12,17 +12,17 @@ import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Plus, Landmark } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export default function Debts() {
   const { data: debts, isLoading } = useDebts();
   const createDebt = useCreateDebt();
   const updateDebt = useUpdateDebt();
   const [showForm, setShowForm] = useState(false);
+  const [debtType, setDebtType] = useState<'single' | 'installments'>('installments');
   const [name, setName] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
-  const [interestRate, setInterestRate] = useState('');
   const [totalInstallments, setTotalInstallments] = useState('');
   const [installmentAmount, setInstallmentAmount] = useState('');
   const [priority, setPriority] = useState('important');
@@ -33,17 +33,23 @@ export default function Debts() {
   const monthlyImpact = activeDebts.reduce((s, d) => s + Number(d.installment_amount), 0);
 
   const handleSubmit = async () => {
-    if (!name || !totalAmount || !totalInstallments || !installmentAmount) {
+    if (!name || !totalAmount) {
       toast.error('Preencha os campos obrigatórios');
       return;
     }
+    if (debtType === 'installments' && (!totalInstallments || !installmentAmount)) {
+      toast.error('Preencha as parcelas');
+      return;
+    }
     try {
+      const total = parseFloat(totalAmount);
       await createDebt.mutateAsync({
-        name, total_amount: parseFloat(totalAmount),
-        interest_rate: interestRate ? parseFloat(interestRate) : undefined,
-        total_installments: parseInt(totalInstallments),
-        installment_amount: parseFloat(installmentAmount),
-        priority, start_date: startDate,
+        name,
+        total_amount: total,
+        total_installments: debtType === 'single' ? 1 : parseInt(totalInstallments),
+        installment_amount: debtType === 'single' ? total : parseFloat(installmentAmount),
+        priority,
+        start_date: startDate,
       });
       toast.success('Dívida cadastrada!');
       setShowForm(false);
@@ -69,8 +75,9 @@ export default function Debts() {
   };
 
   const resetForm = () => {
-    setName(''); setTotalAmount(''); setInterestRate('');
+    setName(''); setTotalAmount('');
     setTotalInstallments(''); setInstallmentAmount(''); setPriority('important');
+    setDebtType('installments');
   };
 
   return (
@@ -110,6 +117,7 @@ export default function Debts() {
         ) : (
           <div className="space-y-3">
             {(debts ?? []).map(debt => {
+              const isSingle = debt.total_installments <= 1;
               const progress = (debt.paid_installments / debt.total_installments) * 100;
               const remaining = Number(debt.total_amount) - Number(debt.installment_amount) * debt.paid_installments;
               return (
@@ -129,17 +137,19 @@ export default function Debts() {
                       </div>
                     </div>
 
-                    <div>
-                      <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                        <span>{debt.paid_installments}/{debt.total_installments} parcelas</span>
-                        <span>{formatCurrency(Number(debt.installment_amount))}/mês</span>
+                    {!isSingle && (
+                      <div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                          <span>{debt.paid_installments}/{debt.total_installments} parcelas</span>
+                          <span>{formatCurrency(Number(debt.installment_amount))}/mês</span>
+                        </div>
+                        <Progress value={progress} className="h-2" />
                       </div>
-                      <Progress value={progress} className="h-2" />
-                    </div>
+                    )}
 
                     {debt.status === 'active' && (
                       <Button size="sm" variant="outline" className="w-full" onClick={() => handlePayInstallment(debt)}>
-                        Pagar Parcela ({debt.paid_installments + 1}/{debt.total_installments})
+                        {isSingle ? 'Marcar como Quitada' : `Pagar Parcela (${debt.paid_installments + 1}/${debt.total_installments})`}
                       </Button>
                     )}
                   </CardContent>
@@ -157,30 +167,56 @@ export default function Debts() {
             <SheetTitle>Nova Dívida</SheetTitle>
           </SheetHeader>
           <div className="space-y-4 mt-4">
+            {/* Type toggle */}
+            <div>
+              <Label>Tipo</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setDebtType('single')}
+                  className={cn(
+                    'h-10 rounded-md border text-sm font-medium transition-colors',
+                    debtType === 'single' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input'
+                  )}
+                >
+                  Pontual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDebtType('installments')}
+                  className={cn(
+                    'h-10 rounded-md border text-sm font-medium transition-colors',
+                    debtType === 'installments' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input'
+                  )}
+                >
+                  Parcelada
+                </button>
+              </div>
+            </div>
+
             <div>
               <Label>Nome</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Financiamento do carro" className="mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Valor Total (R$)</Label>
-                <Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <Label>Juros (% a.m.)</Label>
-                <Input type="number" step="0.01" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} className="mt-1" />
-              </div>
+
+            <div>
+              <Label>Valor Total (R$)</Label>
+              <Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} className="mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Total de Parcelas</Label>
-                <Input type="number" value={totalInstallments} onChange={(e) => setTotalInstallments(e.target.value)} className="mt-1" />
+
+            {debtType === 'installments' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Qtd. Parcelas</Label>
+                  <Input type="number" value={totalInstallments} onChange={(e) => setTotalInstallments(e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Valor da Parcela (R$)</Label>
+                  <Input type="number" step="0.01" value={installmentAmount} onChange={(e) => setInstallmentAmount(e.target.value)} className="mt-1" />
+                </div>
               </div>
-              <div>
-                <Label>Valor da Parcela (R$)</Label>
-                <Input type="number" step="0.01" value={installmentAmount} onChange={(e) => setInstallmentAmount(e.target.value)} className="mt-1" />
-              </div>
-            </div>
+            )}
+
             <div>
               <Label>Prioridade</Label>
               <Select value={priority} onValueChange={setPriority}>
