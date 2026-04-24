@@ -25,10 +25,6 @@ export default function CreditCards() {
 
   // Card form state
   const [cardName, setCardName] = useState('');
-  const [lastDigits, setLastDigits] = useState('');
-  const [creditLimit, setCreditLimit] = useState('');
-  const [closingDay, setClosingDay] = useState('');
-  const [dueDay, setDueDay] = useState('');
   const [cardColor, setCardColor] = useState('#3B82F6');
 
   // Expense form state
@@ -41,18 +37,16 @@ export default function CreditCards() {
   const expenseCategories = categories?.filter(c => c.type === 'expense') ?? [];
 
   const handleCreateCard = async () => {
-    if (!cardName || !lastDigits || !closingDay || !dueDay) {
-      toast.error('Preencha todos os campos');
+    if (!cardName) {
+      toast.error('Informe o nome do cartão');
       return;
     }
     try {
-      await createCard.mutateAsync({
-        name: cardName, last_digits: lastDigits, credit_limit: parseFloat(creditLimit || '0'),
-        closing_day: parseInt(closingDay), due_day: parseInt(dueDay), color: cardColor,
-      });
+      await createCard.mutateAsync({ name: cardName, color: cardColor });
       toast.success('Cartão cadastrado!');
       setShowCardForm(false);
-      setCardName(''); setLastDigits(''); setCreditLimit(''); setClosingDay(''); setDueDay('');
+      setCardName('');
+      setCardColor('#3B82F6');
     } catch {
       toast.error('Erro ao cadastrar');
     }
@@ -100,8 +94,6 @@ export default function CreditCards() {
             {(cards ?? []).map(card => {
               const cardExpenses = (allExpenses ?? []).filter(e => e.card_id === card.id);
               const currentInvoice = cardExpenses.reduce((s, e) => s + Number(e.amount), 0);
-              const daysUntilDue = getDaysUntilDue(card.due_day);
-              const usagePercent = card.credit_limit > 0 ? (currentInvoice / Number(card.credit_limit)) * 100 : 0;
 
               return (
                 <div key={card.id} className="space-y-2">
@@ -117,28 +109,10 @@ export default function CreditCards() {
                       </div>
                       <CreditCardIcon className="h-8 w-8 opacity-50" />
                     </div>
-                    <p className="mt-4 text-lg font-mono tracking-widest">•••• •••• •••• {card.last_digits}</p>
-                    <div className="flex justify-between mt-4 text-xs">
-                      <div>
-                        <p className="opacity-70">Fatura Atual</p>
-                        <p className="font-bold text-base">{formatCurrency(currentInvoice)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="opacity-70">Vencimento</p>
-                        <p className="font-bold">Dia {card.due_day} ({daysUntilDue}d)</p>
-                      </div>
+                    <div className="mt-6">
+                      <p className="text-xs opacity-70">Total de Gastos</p>
+                      <p className="font-bold text-2xl font-mono">{formatCurrency(currentInvoice)}</p>
                     </div>
-                    {card.credit_limit > 0 && (
-                      <div className="mt-3">
-                        <div className="flex justify-between text-[10px] opacity-70">
-                          <span>Limite: {formatCurrency(Number(card.credit_limit))}</span>
-                          <span>{usagePercent.toFixed(0)}% usado</span>
-                        </div>
-                        <div className="w-full bg-white/20 rounded-full h-1.5 mt-1">
-                          <div className="bg-white rounded-full h-1.5 transition-all" style={{ width: `${Math.min(usagePercent, 100)}%` }} />
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Add expense button */}
@@ -178,31 +152,11 @@ export default function CreditCards() {
               <Label>Nome do Cartão</Label>
               <Input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="Ex: Nubank" className="mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Últimos 4 dígitos</Label>
-                <Input value={lastDigits} onChange={(e) => setLastDigits(e.target.value.slice(0, 4))} maxLength={4} className="mt-1" />
-              </div>
-              <div>
-                <Label>Limite (R$)</Label>
-                <Input type="number" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} className="mt-1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Dia Fechamento</Label>
-                <Input type="number" min={1} max={31} value={closingDay} onChange={(e) => setClosingDay(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <Label>Dia Vencimento</Label>
-                <Input type="number" min={1} max={31} value={dueDay} onChange={(e) => setDueDay(e.target.value)} className="mt-1" />
-              </div>
-            </div>
             <div>
               <Label>Cor</Label>
-              <div className="flex gap-2 mt-1">
+              <div className="flex gap-2 mt-1 flex-wrap">
                 {colors.map(c => (
-                  <button key={c} onClick={() => setCardColor(c)}
+                  <button key={c} type="button" onClick={() => setCardColor(c)}
                     className={cn('w-8 h-8 rounded-full border-2 transition-all', cardColor === c ? 'border-foreground scale-110' : 'border-transparent')}
                     style={{ backgroundColor: c }} />
                 ))}

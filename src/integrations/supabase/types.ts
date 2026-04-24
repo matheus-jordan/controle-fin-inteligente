@@ -97,35 +97,35 @@ export type Database = {
       }
       credit_cards: {
         Row: {
-          closing_day: number
+          closing_day: number | null
           color: string
           created_at: string
           credit_limit: number
-          due_day: number
+          due_day: number | null
           id: string
-          last_digits: string
+          last_digits: string | null
           name: string
           user_id: string
         }
         Insert: {
-          closing_day: number
+          closing_day?: number | null
           color?: string
           created_at?: string
           credit_limit?: number
-          due_day: number
+          due_day?: number | null
           id?: string
-          last_digits: string
+          last_digits?: string | null
           name: string
           user_id: string
         }
         Update: {
-          closing_day?: number
+          closing_day?: number | null
           color?: string
           created_at?: string
           credit_limit?: number
-          due_day?: number
+          due_day?: number | null
           id?: string
-          last_digits?: string
+          last_digits?: string | null
           name?: string
           user_id?: string
         }

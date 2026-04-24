@@ -25,11 +25,16 @@ export function useTransactions(month?: string) {
         return data;
       }
 
+      const [yearStr, monthStr] = month.split('-');
+      const year = parseInt(yearStr);
+      const monIdx = parseInt(monthStr) - 1;
       const start = `${month}-01`;
-      const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+      const endDate = new Date(year, monIdx + 1, 0);
       const end = `${month}-${endDate.getDate().toString().padStart(2, '0')}`;
+      const monthStartTs = new Date(year, monIdx, 1).getTime();
+      const monthEndTs = endDate.getTime();
 
-      // Fetch by date range OR due_date range (two queries merged to avoid complex OR syntax issues)
+      // Fetch by date range OR due_date range
       const { data: byDate, error: e1 } = await supabase
         .from('transactions')
         .select('*, categories(*)')
@@ -48,11 +53,62 @@ export function useTransactions(month?: string) {
         .order('date', { ascending: false });
       if (e2) throw e2;
 
-      // Merge and deduplicate by id
-      const map = new Map<string, typeof byDate[0]>();
+      // Fetch all recurring transactions (no month filter) so we can project virtual instances
+      const { data: recurring, error: e3 } = await supabase
+        .from('transactions')
+        .select('*, categories(*)')
+        .eq('user_id', user!.id)
+        .eq('is_recurring', true);
+      if (e3) throw e3;
+
+      // Merge real transactions
+      const map = new Map<string, any>();
       for (const t of [...(byDate ?? []), ...(byDueDate ?? [])]) {
         map.set(t.id, t);
       }
+
+      // Project recurring transactions (only those WITHOUT a fixed due_date) into the target month
+      const intervalDays: Record<string, number> = { weekly: 7, biweekly: 14 };
+      for (const r of recurring ?? []) {
+        if (r.due_date) continue; // recurring with fixed due_date doesn't repeat
+        if (map.has(r.id)) continue; // already in this month as real entry
+        const baseDate = new Date(r.date + 'T00:00:00');
+        if (baseDate.getTime() > monthEndTs) continue; // starts after this month
+        const interval = r.recurrence_interval || 'monthly';
+
+        let occurrence: Date | null = null;
+        if (interval === 'monthly') {
+          // Same day-of-month within target month, capped to last day
+          const day = Math.min(baseDate.getDate(), endDate.getDate());
+          const candidate = new Date(year, monIdx, day);
+          if (candidate.getTime() >= baseDate.getTime() && candidate.getTime() <= monthEndTs) {
+            occurrence = candidate;
+          }
+        } else if (interval === 'yearly') {
+          if (baseDate.getMonth() === monIdx) {
+            const day = Math.min(baseDate.getDate(), endDate.getDate());
+            const candidate = new Date(year, monIdx, day);
+            if (candidate.getTime() >= baseDate.getTime()) occurrence = candidate;
+          }
+        } else if (interval === 'weekly' || interval === 'biweekly') {
+          const step = intervalDays[interval];
+          const diffMs = monthStartTs - baseDate.getTime();
+          const stepsToFirst = Math.max(0, Math.ceil(diffMs / (step * 86400000)));
+          const firstTs = baseDate.getTime() + stepsToFirst * step * 86400000;
+          if (firstTs <= monthEndTs) occurrence = new Date(firstTs);
+        }
+
+        if (occurrence) {
+          const occStr = `${occurrence.getFullYear()}-${(occurrence.getMonth() + 1).toString().padStart(2, '0')}-${occurrence.getDate().toString().padStart(2, '0')}`;
+          map.set(`${r.id}-virtual-${occStr}`, {
+            ...r,
+            id: `${r.id}-virtual-${occStr}`,
+            date: occStr,
+            status: 'pending',
+          });
+        }
+      }
+
       return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
     },
     enabled: !!user,
@@ -182,13 +238,12 @@ export function useCreateDebt() {
   const { user } = useAuth();
   return useMutation({
     mutationFn: async (data: {
-      name: string; total_amount: number; interest_rate?: number;
+      name: string; total_amount: number;
       total_installments: number; installment_amount: number; priority: string; start_date: string;
     }) => {
       const { error } = await supabase.from('debts').insert({
         name: data.name,
         total_amount: data.total_amount,
-        interest_rate: data.interest_rate,
         total_installments: data.total_installments,
         installment_amount: data.installment_amount,
         priority: data.priority as 'essential' | 'critical' | 'important' | 'optional',
@@ -232,8 +287,8 @@ export function useCreateCreditCard() {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async (data: { name: string; last_digits: string; credit_limit: number; closing_day: number; due_day: number; color: string }) => {
-      const { error } = await supabase.from('credit_cards').insert({ ...data, user_id: user!.id });
+    mutationFn: async (data: { name: string; color: string; last_digits?: string; credit_limit?: number; closing_day?: number; due_day?: number }) => {
+      const { error } = await supabase.from('credit_cards').insert({ ...data, user_id: user!.id } as any);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['credit_cards'] }),
