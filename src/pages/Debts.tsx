@@ -264,39 +264,34 @@ export default function Debts() {
             {/* Type toggle */}
             <div>
               <Label>Tipo</Label>
-              <div className="grid grid-cols-2 gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setDebtType('single')}
-                  className={cn(
-                    'h-10 rounded-md border text-sm font-medium transition-colors',
-                    debtType === 'single' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input'
-                  )}
-                >
-                  Pontual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDebtType('installments')}
-                  className={cn(
-                    'h-10 rounded-md border text-sm font-medium transition-colors',
-                    debtType === 'installments' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input'
-                  )}
-                >
-                  Parcelada
-                </button>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                {(['single', 'installments', 'recurring'] as const).map(k => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setDebtType(k)}
+                    className={cn(
+                      'h-10 rounded-md border text-sm font-medium transition-colors',
+                      debtType === k ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input'
+                    )}
+                  >
+                    {k === 'single' ? 'Pontual' : k === 'installments' ? 'Parcelada' : 'Recorrente'}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div>
               <Label>Nome</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Financiamento do carro" className="mt-1" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={debtType === 'recurring' ? 'Ex: Aluguel' : 'Ex: Financiamento do carro'} className="mt-1" />
             </div>
 
-            <div>
-              <Label>Valor Total (R$)</Label>
-              <Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} className="mt-1" />
-            </div>
+            {debtType !== 'recurring' && (
+              <div>
+                <Label>Valor Total (R$)</Label>
+                <Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} className="mt-1" />
+              </div>
+            )}
 
             {debtType === 'installments' && (
               <div className="grid grid-cols-2 gap-3">
@@ -310,6 +305,29 @@ export default function Debts() {
                 </div>
               </div>
             )}
+
+            {debtType === 'recurring' && (
+              <>
+                <div>
+                  <Label>Valor Mensal (R$)</Label>
+                  <Input type="number" step="0.01" value={monthlyAmount} onChange={(e) => setMonthlyAmount(e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Duração em meses (opcional)</Label>
+                  <Input
+                    type="number"
+                    value={durationMonths}
+                    onChange={(e) => setDurationMonths(e.target.value)}
+                    placeholder="Deixe vazio para sem fim"
+                    className="mt-1"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Após esse período, a dívida deixa de aparecer no sistema.
+                  </p>
+                </div>
+              </>
+            )}
+
 
             <div>
               <Label>Prioridade</Label>
