@@ -134,6 +134,9 @@ export type Database = {
       debts: {
         Row: {
           created_at: string
+          debt_kind: string
+          duration_months: number | null
+          end_date: string | null
           id: string
           installment_amount: number
           interest_rate: number | null
@@ -148,6 +151,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          debt_kind?: string
+          duration_months?: number | null
+          end_date?: string | null
           id?: string
           installment_amount: number
           interest_rate?: number | null
@@ -162,6 +168,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          debt_kind?: string
+          duration_months?: number | null
+          end_date?: string | null
           id?: string
           installment_amount?: number
           interest_rate?: number | null
