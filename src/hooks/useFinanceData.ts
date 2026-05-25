@@ -336,8 +336,32 @@ export interface UpcomingPayment {
   daysUntil: number | null;
   urgency: 'overdue' | 'urgent' | 'warning' | 'ok' | 'none';
   priority: 'essential' | 'critical' | 'important' | 'optional';
-  source: 'transaction' | 'fixed_bill';
+  source: 'transaction' | 'fixed_bill' | 'debt';
   status: 'pending' | 'paid';
+}
+
+// Returns the monthly installment amount that a debt contributes to target month, or 0 if not active that month.
+function debtMonthlyImpact(debt: any, targetYear: number, targetMon: number): number {
+  const start = new Date(debt.start_date + 'T00:00:00');
+  const startMonths = start.getFullYear() * 12 + start.getMonth();
+  const targetMonths = targetYear * 12 + targetMon;
+  if (targetMonths < startMonths) return 0;
+
+  const kind = debt.debt_kind ?? (debt.total_installments <= 1 ? 'single' : 'installments');
+
+  if (kind === 'recurring') {
+    if (debt.end_date) {
+      const end = new Date(debt.end_date + 'T00:00:00');
+      const endMonths = end.getFullYear() * 12 + end.getMonth();
+      if (targetMonths > endMonths) return 0;
+    }
+    return Number(debt.installment_amount);
+  }
+
+  // single or installments — active for total_installments months starting at start_date
+  const monthsFromStart = targetMonths - startMonths;
+  if (monthsFromStart >= debt.total_installments) return 0;
+  return Number(debt.installment_amount);
 }
 
 export function useUpcomingPayments(month?: string) {
@@ -345,6 +369,7 @@ export function useUpcomingPayments(month?: string) {
   const targetMonth = month || `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   const transactions = useTransactions(targetMonth);
   const fixedBills = useFixedBills();
+  const debts = useDebts();
 
   const payments: UpcomingPayment[] = [];
 
@@ -401,6 +426,32 @@ export function useUpcomingPayments(month?: string) {
       });
     });
 
+  // Debts as expenses for the target month
+  (debts.data ?? [])
+    .filter(d => d.status === 'active')
+    .forEach(d => {
+      const impact = debtMonthlyImpact(d, targetYear, targetMon);
+      if (impact <= 0) return;
+      const kind = (d as any).debt_kind ?? (d.total_installments <= 1 ? 'single' : 'installments');
+      // Index of this month in the debt's schedule (0-based)
+      const start = new Date(d.start_date + 'T00:00:00');
+      const monthIdx = (targetYear * 12 + targetMon) - (start.getFullYear() * 12 + start.getMonth());
+      const isPaid = d.paid_installments > monthIdx;
+      payments.push({
+        id: `debt-${d.id}-${targetMonth}`,
+        name: kind === 'recurring'
+          ? d.name
+          : `${d.name} (${monthIdx + 1}/${d.total_installments})`,
+        amount: impact,
+        dueDate: null,
+        daysUntil: null,
+        urgency: 'none',
+        priority: d.priority,
+        source: 'debt',
+        status: isPaid ? 'paid' : 'pending',
+      });
+    });
+
   const priorityOrder = { essential: 0, critical: 1, important: 2, optional: 3 };
   payments.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
@@ -412,7 +463,7 @@ export function useUpcomingPayments(month?: string) {
 
   return {
     payments,
-    isLoading: transactions.isLoading || fixedBills.isLoading,
+    isLoading: transactions.isLoading || fixedBills.isLoading || debts.isLoading,
   };
 }
 
@@ -420,16 +471,47 @@ export function useFinanceSummary(month?: string) {
   const now = new Date();
   const targetMonth = month || `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   const transactions = useTransactions(targetMonth);
+  const debts = useDebts();
 
   const allTx = transactions.data ?? [];
   const incomes = allTx.filter(t => t.type === 'income');
   const expenses = allTx.filter(t => t.type === 'expense');
 
+  const [yearStr, monthStr] = targetMonth.split('-');
+  const targetYear = parseInt(yearStr);
+  const targetMon = parseInt(monthStr) - 1;
+
+  // Build expense-like entries from active debts for the target month
+  type ExpenseLike = { amount: number; status: 'pending' | 'paid' };
+  const debtExpenses: ExpenseLike[] = [];
+  (debts.data ?? [])
+    .filter(d => d.status === 'active')
+    .forEach(d => {
+      const impact = debtMonthlyImpact(d, targetYear, targetMon);
+      if (impact <= 0) return;
+      const start = new Date(d.start_date + 'T00:00:00');
+      const monthIdx = (targetYear * 12 + targetMon) - (start.getFullYear() * 12 + start.getMonth());
+      const isPaid = d.paid_installments > monthIdx;
+      debtExpenses.push({ amount: impact, status: isPaid ? 'paid' : 'pending' });
+    });
+
+  const txExpenseTotal = expenses.reduce((s, t) => s + Number(t.amount), 0);
+  const debtExpenseTotal = debtExpenses.reduce((s, e) => s + e.amount, 0);
+
   const totalIncome = incomes.reduce((s, t) => s + Number(t.amount), 0);
-  const totalExpenses = expenses.reduce((s, t) => s + Number(t.amount), 0);
-  const paidExpenses = expenses.filter(t => t.status === 'paid').reduce((s, t) => s + Number(t.amount), 0);
-  const pendingExpenses = expenses.filter(t => t.status === 'pending').reduce((s, t) => s + Number(t.amount), 0);
+  const totalExpenses = txExpenseTotal + debtExpenseTotal;
+
+  const paidTxExpenses = expenses.filter(t => t.status === 'paid').reduce((s, t) => s + Number(t.amount), 0);
+  const pendingTxExpenses = expenses.filter(t => t.status === 'pending').reduce((s, t) => s + Number(t.amount), 0);
+  const paidDebt = debtExpenses.filter(e => e.status === 'paid').reduce((s, e) => s + e.amount, 0);
+  const pendingDebt = debtExpenses.filter(e => e.status === 'pending').reduce((s, e) => s + e.amount, 0);
+
+  const paidExpenses = paidTxExpenses + paidDebt;
+  const pendingExpenses = pendingTxExpenses + pendingDebt;
   const estimatedRemaining = totalIncome - totalExpenses;
+
+  const paidCount = expenses.filter(t => t.status === 'paid').length + debtExpenses.filter(e => e.status === 'paid').length;
+  const pendingCount = expenses.filter(t => t.status === 'pending').length + debtExpenses.filter(e => e.status === 'pending').length;
 
   return {
     totalIncome,
@@ -438,9 +520,9 @@ export function useFinanceSummary(month?: string) {
     pendingExpenses,
     estimatedRemaining,
     incomeCount: incomes.length,
-    expenseCount: expenses.length,
-    paidCount: expenses.filter(t => t.status === 'paid').length,
-    pendingCount: expenses.filter(t => t.status === 'pending').length,
-    isLoading: transactions.isLoading,
+    expenseCount: expenses.length + debtExpenses.length,
+    paidCount,
+    pendingCount,
+    isLoading: transactions.isLoading || debts.isLoading,
   };
 }
