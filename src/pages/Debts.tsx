@@ -20,37 +20,90 @@ export default function Debts() {
   const createDebt = useCreateDebt();
   const updateDebt = useUpdateDebt();
   const [showForm, setShowForm] = useState(false);
-  const [debtType, setDebtType] = useState<'single' | 'installments'>('installments');
+  const [debtType, setDebtType] = useState<'single' | 'installments' | 'recurring'>('installments');
   const [name, setName] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [totalInstallments, setTotalInstallments] = useState('');
   const [installmentAmount, setInstallmentAmount] = useState('');
+  const [monthlyAmount, setMonthlyAmount] = useState('');
+  const [durationMonths, setDurationMonths] = useState('');
   const [priority, setPriority] = useState('important');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const activeDebts = (debts ?? []).filter(d => d.status === 'active');
-  const totalDebtAmount = activeDebts.reduce((s, d) => s + (Number(d.total_amount) - Number(d.installment_amount) * d.paid_installments), 0);
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Active = not finished. Recurring is active while today <= end_date (or no end_date).
+  const isDebtActive = (d: any) => {
+    if (d.status !== 'active') return false;
+    if (d.debt_kind === 'recurring' && d.end_date && d.end_date < todayStr) return false;
+    return true;
+  };
+
+  const activeDebts = (debts ?? []).filter(isDebtActive);
+  const totalDebtAmount = activeDebts.reduce((s, d) => {
+    if (d.debt_kind === 'recurring') {
+      if (!d.end_date) return s; // sem fim definido — não soma valor total
+      // meses restantes (incluindo o atual)
+      const end = new Date(d.end_date + 'T00:00:00');
+      const monthsLeft = Math.max(0, (end.getFullYear() - today.getFullYear()) * 12 + (end.getMonth() - today.getMonth()) + 1);
+      return s + monthsLeft * Number(d.installment_amount);
+    }
+    return s + (Number(d.total_amount) - Number(d.installment_amount) * d.paid_installments);
+  }, 0);
   const monthlyImpact = activeDebts.reduce((s, d) => s + Number(d.installment_amount), 0);
 
   const handleSubmit = async () => {
-    if (!name || !totalAmount) {
-      toast.error('Preencha os campos obrigatórios');
+    if (!name) {
+      toast.error('Preencha o nome');
       return;
     }
-    if (debtType === 'installments' && (!totalInstallments || !installmentAmount)) {
-      toast.error('Preencha as parcelas');
+    if (debtType === 'installments' && (!totalAmount || !totalInstallments || !installmentAmount)) {
+      toast.error('Preencha os campos da parcela');
+      return;
+    }
+    if (debtType === 'single' && !totalAmount) {
+      toast.error('Preencha o valor total');
+      return;
+    }
+    if (debtType === 'recurring' && !monthlyAmount) {
+      toast.error('Preencha o valor mensal');
       return;
     }
     try {
-      const total = parseFloat(totalAmount);
-      await createDebt.mutateAsync({
-        name,
-        total_amount: total,
-        total_installments: debtType === 'single' ? 1 : parseInt(totalInstallments),
-        installment_amount: debtType === 'single' ? total : parseFloat(installmentAmount),
-        priority,
-        start_date: startDate,
-      });
+      if (debtType === 'recurring') {
+        const monthly = parseFloat(monthlyAmount);
+        const duration = durationMonths ? parseInt(durationMonths) : null;
+        let endDate: string | null = null;
+        if (duration && duration > 0) {
+          const start = new Date(startDate + 'T00:00:00');
+          // end = start + duration months - 1 day
+          const end = new Date(start.getFullYear(), start.getMonth() + duration, 0);
+          endDate = end.toISOString().split('T')[0];
+        }
+        await createDebt.mutateAsync({
+          name,
+          total_amount: duration ? monthly * duration : monthly,
+          total_installments: duration ?? 9999,
+          installment_amount: monthly,
+          priority,
+          start_date: startDate,
+          debt_kind: 'recurring',
+          duration_months: duration,
+          end_date: endDate,
+        });
+      } else {
+        const total = parseFloat(totalAmount);
+        await createDebt.mutateAsync({
+          name,
+          total_amount: total,
+          total_installments: debtType === 'single' ? 1 : parseInt(totalInstallments),
+          installment_amount: debtType === 'single' ? total : parseFloat(installmentAmount),
+          priority,
+          start_date: startDate,
+          debt_kind: debtType,
+        });
+      }
       toast.success('Dívida cadastrada!');
       setShowForm(false);
       resetForm();
