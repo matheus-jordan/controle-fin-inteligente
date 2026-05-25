@@ -172,27 +172,62 @@ export default function Debts() {
         ) : (
           <div className="space-y-3">
             {(debts ?? []).map(debt => {
-              const isSingle = debt.total_installments <= 1;
-              const progress = (debt.paid_installments / debt.total_installments) * 100;
-              const remaining = Number(debt.total_amount) - Number(debt.installment_amount) * debt.paid_installments;
+              const kind = (debt as any).debt_kind ?? (debt.total_installments <= 1 ? 'single' : 'installments');
+              const isSingle = kind === 'single';
+              const isRecurring = kind === 'recurring';
+              const endDate = (debt as any).end_date as string | null;
+              const isFinished = isRecurring && endDate && endDate < todayStr;
+              const progress = isRecurring
+                ? (endDate ? Math.min(100, (debt.paid_installments / (debt as any).duration_months) * 100) : 0)
+                : (debt.paid_installments / debt.total_installments) * 100;
+              const remaining = isRecurring
+                ? (endDate
+                    ? Math.max(0, ((debt as any).duration_months - debt.paid_installments)) * Number(debt.installment_amount)
+                    : Number(debt.installment_amount))
+                : Number(debt.total_amount) - Number(debt.installment_amount) * debt.paid_installments;
               return (
-                <Card key={debt.id}>
+                <Card key={debt.id} className={cn(isFinished && 'opacity-60')}>
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="font-semibold text-sm">{debt.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <PriorityBadge priority={debt.priority} />
-                          <StatusBadge status={debt.status as any} />
+                          <StatusBadge status={(isFinished ? 'paid_off' : debt.status) as any} />
+                          {isRecurring && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                              Recorrente
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold font-mono">{formatCurrency(remaining)}</p>
-                        <p className="text-[10px] text-muted-foreground">restante</p>
+                        <p className="text-sm font-bold font-mono">
+                          {isRecurring && !endDate
+                            ? `${formatCurrency(Number(debt.installment_amount))}/mês`
+                            : formatCurrency(remaining)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {isRecurring && !endDate ? 'sem fim' : 'restante'}
+                        </p>
                       </div>
                     </div>
 
-                    {!isSingle && (
+                    {isRecurring && endDate && (
+                      <div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                          <span>{debt.paid_installments}/{(debt as any).duration_months} meses · até {new Date(endDate + 'T00:00:00').toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' })}</span>
+                          <span>{formatCurrency(Number(debt.installment_amount))}/mês</span>
+                        </div>
+                        <Progress value={progress} className="h-2" />
+                      </div>
+                    )}
+
+                    {isRecurring && !endDate && (
+                      <p className="text-[10px] text-muted-foreground">{debt.paid_installments} meses pagos</p>
+                    )}
+
+                    {!isRecurring && !isSingle && (
                       <div>
                         <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
                           <span>{debt.paid_installments}/{debt.total_installments} parcelas</span>
@@ -202,9 +237,13 @@ export default function Debts() {
                       </div>
                     )}
 
-                    {debt.status === 'active' && (
+                    {debt.status === 'active' && !isFinished && (
                       <Button size="sm" variant="outline" className="w-full" onClick={() => handlePayInstallment(debt)}>
-                        {isSingle ? 'Marcar como Quitada' : `Pagar Parcela (${debt.paid_installments + 1}/${debt.total_installments})`}
+                        {isSingle
+                          ? 'Marcar como Quitada'
+                          : isRecurring
+                            ? `Pagar mês (${debt.paid_installments + 1}${endDate ? `/${(debt as any).duration_months}` : ''})`
+                            : `Pagar Parcela (${debt.paid_installments + 1}/${debt.total_installments})`}
                       </Button>
                     )}
                   </CardContent>
