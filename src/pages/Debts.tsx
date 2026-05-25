@@ -129,7 +129,9 @@ export default function Debts() {
 
   const resetForm = () => {
     setName(''); setTotalAmount('');
-    setTotalInstallments(''); setInstallmentAmount(''); setPriority('important');
+    setTotalInstallments(''); setInstallmentAmount('');
+    setMonthlyAmount(''); setDurationMonths('');
+    setPriority('important');
     setDebtType('installments');
   };
 
