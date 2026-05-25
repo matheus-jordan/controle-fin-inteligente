@@ -240,6 +240,9 @@ export function useCreateDebt() {
     mutationFn: async (data: {
       name: string; total_amount: number;
       total_installments: number; installment_amount: number; priority: string; start_date: string;
+      debt_kind?: 'single' | 'installments' | 'recurring';
+      duration_months?: number | null;
+      end_date?: string | null;
     }) => {
       const { error } = await supabase.from('debts').insert({
         name: data.name,
@@ -248,8 +251,11 @@ export function useCreateDebt() {
         installment_amount: data.installment_amount,
         priority: data.priority as 'essential' | 'critical' | 'important' | 'optional',
         start_date: data.start_date,
+        debt_kind: data.debt_kind ?? 'installments',
+        duration_months: data.duration_months ?? null,
+        end_date: data.end_date ?? null,
         user_id: user!.id,
-      });
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['debts'] }),
