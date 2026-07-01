@@ -22,6 +22,7 @@ export interface TransactionToEdit {
   status: string;
   is_recurring: boolean;
   recurrence_interval: string | null;
+  recurrence_end_date?: string | null;
 }
 
 interface TransactionFormProps {
@@ -47,6 +48,8 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
   const [status, setStatus] = useState('pending');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceInterval, setRecurrenceInterval] = useState<string>('monthly');
+  const [hasRecurrenceEnd, setHasRecurrenceEnd] = useState(false);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
   const [hasDueDate, setHasDueDate] = useState(true);
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -69,6 +72,8 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
       setStatus(editTransaction.status);
       setIsRecurring(editTransaction.is_recurring);
       setRecurrenceInterval(editTransaction.recurrence_interval || 'monthly');
+      setHasRecurrenceEnd(!!editTransaction.recurrence_end_date);
+      setRecurrenceEndDate(editTransaction.recurrence_end_date || '');
       setHasDueDate(!!editTransaction.due_date);
       setDueDate(editTransaction.due_date || new Date().toISOString().split('T')[0]);
     } else {
@@ -93,6 +98,7 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
       status: isIncome ? 'paid' : status,
       is_recurring: isRecurring,
       recurrence_interval: isRecurring ? recurrenceInterval as any : undefined,
+      recurrence_end_date: isRecurring && hasRecurrenceEnd && recurrenceEndDate ? recurrenceEndDate : null,
     };
 
     try {
@@ -120,6 +126,8 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
     setStatus('pending');
     setIsRecurring(false);
     setRecurrenceInterval('monthly');
+    setHasRecurrenceEnd(false);
+    setRecurrenceEndDate('');
     setHasDueDate(true);
     setDueDate(new Date().toISOString().split('T')[0]);
   };
@@ -206,17 +214,40 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
           </div>
 
           {isRecurring && (
-            <Select value={recurrenceInterval} onValueChange={setRecurrenceInterval}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="weekly">Semanal</SelectItem>
-                <SelectItem value="biweekly">Quinzenal</SelectItem>
-                <SelectItem value="monthly">Mensal</SelectItem>
-                <SelectItem value="yearly">Anual</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-3 rounded-lg border border-border/60 p-3">
+              <div>
+                <Label className="text-xs">Frequência</Label>
+                <Select value={recurrenceInterval} onValueChange={setRecurrenceInterval}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="weekly">Semanal</SelectItem>
+                    <SelectItem value="biweekly">Quinzenal</SelectItem>
+                    <SelectItem value="monthly">Mensal</SelectItem>
+                    <SelectItem value="yearly">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="has-recurrence-end"
+                  checked={hasRecurrenceEnd}
+                  onCheckedChange={(checked) => setHasRecurrenceEnd(checked === true)}
+                />
+                <Label htmlFor="has-recurrence-end" className="cursor-pointer text-sm">
+                  Tem data de término? (opcional)
+                </Label>
+              </div>
+              {hasRecurrenceEnd && (
+                <Input
+                  type="date"
+                  value={recurrenceEndDate}
+                  onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                />
+              )}
+            </div>
           )}
 
           {/* Expense-only fields */}

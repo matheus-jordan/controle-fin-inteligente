@@ -240,6 +240,7 @@ export type Database = {
           id: string
           is_recurring: boolean
           priority: Database["public"]["Enums"]["priority_level"]
+          recurrence_end_date: string | null
           recurrence_interval:
             | Database["public"]["Enums"]["recurrence_interval"]
             | null
@@ -257,6 +258,7 @@ export type Database = {
           id?: string
           is_recurring?: boolean
           priority?: Database["public"]["Enums"]["priority_level"]
+          recurrence_end_date?: string | null
           recurrence_interval?:
             | Database["public"]["Enums"]["recurrence_interval"]
             | null
@@ -274,6 +276,7 @@ export type Database = {
           id?: string
           is_recurring?: boolean
           priority?: Database["public"]["Enums"]["priority_level"]
+          recurrence_end_date?: string | null
           recurrence_interval?:
             | Database["public"]["Enums"]["recurrence_interval"]
             | null
