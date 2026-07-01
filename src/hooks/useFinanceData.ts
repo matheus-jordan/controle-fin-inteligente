@@ -74,11 +74,14 @@ export function useTransactions(month?: string) {
         if (map.has(r.id)) continue; // already in this month as real entry
         const baseDate = new Date(r.date + 'T00:00:00');
         if (baseDate.getTime() > monthEndTs) continue; // starts after this month
+        const endLimit = (r as any).recurrence_end_date
+          ? new Date((r as any).recurrence_end_date + 'T00:00:00').getTime()
+          : null;
+        if (endLimit !== null && monthStartTs > endLimit) continue; // ended before this month
         const interval = r.recurrence_interval || 'monthly';
 
         let occurrence: Date | null = null;
         if (interval === 'monthly') {
-          // Same day-of-month within target month, capped to last day
           const day = Math.min(baseDate.getDate(), endDate.getDate());
           const candidate = new Date(year, monIdx, day);
           if (candidate.getTime() >= baseDate.getTime() && candidate.getTime() <= monthEndTs) {
@@ -98,11 +101,13 @@ export function useTransactions(month?: string) {
           if (firstTs <= monthEndTs) occurrence = new Date(firstTs);
         }
 
-        if (occurrence) {
+        if (occurrence && (endLimit === null || occurrence.getTime() <= endLimit)) {
           const occStr = `${occurrence.getFullYear()}-${(occurrence.getMonth() + 1).toString().padStart(2, '0')}-${occurrence.getDate().toString().padStart(2, '0')}`;
           map.set(`${r.id}-virtual-${occStr}`, {
             ...r,
             id: `${r.id}-virtual-${occStr}`,
+            original_id: r.id,
+            is_virtual: true,
             date: occStr,
             status: 'pending',
           });
@@ -113,6 +118,12 @@ export function useTransactions(month?: string) {
     },
     enabled: !!user,
   });
+}
+
+// Strip virtual suffix used for projected recurring occurrences.
+function realId(id: string): string {
+  const idx = id.indexOf('-virtual-');
+  return idx === -1 ? id : id.slice(0, idx);
 }
 
 export function useCreateTransaction() {
@@ -130,8 +141,9 @@ export function useCreateTransaction() {
       due_date?: string | null;
       is_recurring?: boolean;
       recurrence_interval?: 'monthly' | 'weekly' | 'biweekly' | 'yearly';
+      recurrence_end_date?: string | null;
     }) => {
-      const { error } = await supabase.from('transactions').insert({ ...data, user_id: user!.id });
+      const { error } = await supabase.from('transactions').insert({ ...data, user_id: user!.id } as any);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
@@ -142,7 +154,7 @@ export function useUpdateTransaction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from('transactions').update({ status }).eq('id', id);
+      const { error } = await supabase.from('transactions').update({ status }).eq('id', realId(id));
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
@@ -165,12 +177,13 @@ export function useUpdateTransactionFull() {
       status: string;
       is_recurring?: boolean;
       recurrence_interval?: 'monthly' | 'weekly' | 'biweekly' | 'yearly';
+      recurrence_end_date?: string | null;
     }) => {
       const { id, ...rest } = data;
       const { error } = await supabase.from('transactions').update({
         ...rest,
         user_id: user!.id,
-      } as any).eq('id', id);
+      } as any).eq('id', realId(id));
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
@@ -181,7 +194,7 @@ export function useDeleteTransaction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('transactions').delete().eq('id', id);
+      const { error } = await supabase.from('transactions').delete().eq('id', realId(id));
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
