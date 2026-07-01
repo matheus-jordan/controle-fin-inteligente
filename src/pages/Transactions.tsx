@@ -57,7 +57,7 @@ export default function Transactions() {
 
   const handleEdit = (t: any) => {
     setEditingTransaction({
-      id: t.id,
+      id: t.original_id || t.id,
       type: t.type,
       amount: Number(t.amount),
       description: t.description,
@@ -68,6 +68,7 @@ export default function Transactions() {
       status: t.status,
       is_recurring: t.is_recurring,
       recurrence_interval: t.recurrence_interval,
+      recurrence_end_date: t.recurrence_end_date ?? null,
     });
     setShowForm(true);
   };
