@@ -67,10 +67,10 @@ export function useTransactions(month?: string) {
         map.set(t.id, t);
       }
 
-      // Project recurring transactions (only those WITHOUT a fixed due_date) into the target month
+      // Project recurring transactions into the target month, including those with a fixed due_date
       const intervalDays: Record<string, number> = { weekly: 7, biweekly: 14 };
+      const toDateStr = (d: Date) => `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
       for (const r of recurring ?? []) {
-        if (r.due_date) continue; // recurring with fixed due_date doesn't repeat
         if (map.has(r.id)) continue; // already in this month as real entry
         const baseDate = new Date(r.date + 'T00:00:00');
         if (baseDate.getTime() > monthEndTs) continue; // starts after this month
@@ -79,6 +79,8 @@ export function useTransactions(month?: string) {
           : null;
         if (endLimit !== null && monthStartTs > endLimit) continue; // ended before this month
         const interval = r.recurrence_interval || 'monthly';
+        // Preserve the gap between registration date and due date across every projected occurrence
+        const dueOffsetMs = r.due_date ? new Date(r.due_date + 'T00:00:00').getTime() - baseDate.getTime() : null;
 
         let occurrence: Date | null = null;
         if (interval === 'monthly') {
@@ -102,13 +104,15 @@ export function useTransactions(month?: string) {
         }
 
         if (occurrence && (endLimit === null || occurrence.getTime() <= endLimit)) {
-          const occStr = `${occurrence.getFullYear()}-${(occurrence.getMonth() + 1).toString().padStart(2, '0')}-${occurrence.getDate().toString().padStart(2, '0')}`;
+          const occStr = toDateStr(occurrence);
+          const virtualDueDate = dueOffsetMs !== null ? toDateStr(new Date(occurrence.getTime() + dueOffsetMs)) : null;
           map.set(`${r.id}-virtual-${occStr}`, {
             ...r,
             id: `${r.id}-virtual-${occStr}`,
             original_id: r.id,
             is_virtual: true,
             date: occStr,
+            due_date: virtualDueDate,
             status: 'pending',
           });
         }
