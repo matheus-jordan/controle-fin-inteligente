@@ -79,8 +79,13 @@ export function useTransactions(month?: string) {
           : null;
         if (endLimit !== null && monthStartTs > endLimit) continue; // ended before this month
         const interval = r.recurrence_interval || 'monthly';
-        // Preserve the gap between registration date and due date across every projected occurrence
-        const dueOffsetMs = r.due_date ? new Date(r.due_date + 'T00:00:00').getTime() - baseDate.getTime() : null;
+        const dueDateOriginal = r.due_date ? new Date(r.due_date + 'T00:00:00') : null;
+        // For weekly/biweekly, preserve the day gap between registration and due date
+        const dueOffsetMs = dueDateOriginal ? dueDateOriginal.getTime() - baseDate.getTime() : null;
+        // For monthly/yearly, preserve the fixed due day-of-month (and month offset), so it doesn't drift with month length
+        const dueMonthDelta = dueDateOriginal
+          ? (dueDateOriginal.getFullYear() * 12 + dueDateOriginal.getMonth()) - (baseDate.getFullYear() * 12 + baseDate.getMonth())
+          : null;
 
         let occurrence: Date | null = null;
         if (interval === 'monthly') {
@@ -105,7 +110,19 @@ export function useTransactions(month?: string) {
 
         if (occurrence && (endLimit === null || occurrence.getTime() <= endLimit)) {
           const occStr = toDateStr(occurrence);
-          const virtualDueDate = dueOffsetMs !== null ? toDateStr(new Date(occurrence.getTime() + dueOffsetMs)) : null;
+          let virtualDueDate: string | null = null;
+          if (dueDateOriginal) {
+            if (interval === 'monthly' || interval === 'yearly') {
+              const dueMonthIdx = occurrence.getMonth() + (dueMonthDelta ?? 0);
+              const dueYear = occurrence.getFullYear() + Math.floor(dueMonthIdx / 12);
+              const normalizedDueMonthIdx = ((dueMonthIdx % 12) + 12) % 12;
+              const lastDayOfDueMonth = new Date(dueYear, normalizedDueMonthIdx + 1, 0).getDate();
+              const dueDay = Math.min(dueDateOriginal.getDate(), lastDayOfDueMonth);
+              virtualDueDate = toDateStr(new Date(dueYear, normalizedDueMonthIdx, dueDay));
+            } else if (dueOffsetMs !== null) {
+              virtualDueDate = toDateStr(new Date(occurrence.getTime() + dueOffsetMs));
+            }
+          }
           map.set(`${r.id}-virtual-${occStr}`, {
             ...r,
             id: `${r.id}-virtual-${occStr}`,
