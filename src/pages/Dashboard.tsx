@@ -172,18 +172,16 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
-                <div>
-                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary" />Fixas</p>
-                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(committed.fixed)}</p>
-                </div>
-                <div>
-                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[hsl(var(--glow))]" />Cartão</p>
-                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(committed.card)}</p>
-                </div>
-                <div>
-                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-destructive" />Dívidas</p>
-                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(committed.debt)}</p>
-                </div>
+                {[
+                  { label: 'Fixas', v: committed.fixed, c: 'bg-primary' },
+                  { label: 'Cartão', v: committed.card, c: 'bg-[hsl(var(--glow))]' },
+                  { label: 'Dívidas', v: committed.debt, c: 'bg-destructive' },
+                ].filter(b => b.v > 0).map(b => (
+                  <div key={b.label}>
+                    <p className="flex items-center gap-1.5 text-muted-foreground"><span className={cn('h-2 w-2 rounded-full', b.c)} />{b.label}</p>
+                    <p className="font-mono font-semibold mt-0.5">{formatCurrency(b.v)}</p>
+                  </div>
+                ))}
               </div>
               <p className="text-xs text-muted-foreground mt-3">
                 Livre após compromissos:{' '}

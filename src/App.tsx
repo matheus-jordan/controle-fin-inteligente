@@ -8,6 +8,8 @@ import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Debts from "./pages/Debts";
 import CreditCards from "./pages/CreditCards";
+import Reports from "./pages/Reports";
+import Assistant from "./pages/Assistant";
 import AuthPage from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -32,6 +34,8 @@ function AppRoutes() {
       <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
       <Route path="/debts" element={<ProtectedRoute><Debts /></ProtectedRoute>} />
       <Route path="/cards" element={<ProtectedRoute><CreditCards /></ProtectedRoute>} />
+      <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+      <Route path="/assistant" element={<ProtectedRoute><Assistant /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

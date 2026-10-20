@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ArrowLeftRight, Plus, Landmark, CreditCard } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Plus, PieChart, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { TransactionForm } from '@/components/transactions/TransactionForm';
@@ -8,8 +8,8 @@ const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Início' },
   { path: '/transactions', icon: ArrowLeftRight, label: 'Transações' },
   { path: '#add', icon: Plus, label: 'Adicionar', isAction: true },
-  { path: '/debts', icon: Landmark, label: 'Dívidas' },
-  { path: '/cards', icon: CreditCard, label: 'Cartões' },
+  { path: '/reports', icon: PieChart, label: 'Relatórios' },
+  { path: '/assistant', icon: Sparkles, label: 'Assistente' },
 ];
 
 export function BottomNav() {
