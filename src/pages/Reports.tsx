@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useTransactions } from '@/hooks/useFinanceData';
 import { monthHistory, buildInsights, UNCATEGORIZED, type Insight } from '@/lib/report';
 import { formatCurrency } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { MonthNav } from '@/components/shared/MonthNav';
-import { AlertTriangle, CheckCircle2, Info, XCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, XCircle, ArrowUpRight, ArrowDownRight, Tags } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const toneStyle: Record<Insight['tone'], { icon: typeof Info; cls: string }> = {
@@ -24,6 +25,7 @@ const shortMonth = (m: string) => {
 export default function Reports() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedBar, setSelectedBar] = useState<number | null>(null);
+  const navigate = useNavigate();
   const now = new Date();
   const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
   const currentMonth = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -65,6 +67,17 @@ export default function Reports() {
           <p className="text-center py-8 text-muted-foreground">Nenhum lançamento neste mês</p>
         ) : (
           <>
+            {(all ?? []).some(t => !t.category_id) && (
+              <button
+                onClick={() => navigate('/categorize')}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-primary/10 border border-primary/25 text-sm text-left hover:bg-primary/15 transition-colors"
+              >
+                <Tags className="h-4 w-4 shrink-0 text-primary" />
+                <span className="flex-1">Há lançamentos sem categoria deixando o relatório incompleto</span>
+                <span className="text-primary font-medium">Organizar</span>
+              </button>
+            )}
+
             {/* What to do */}
             {insights.length > 0 && (
               <section className="space-y-2">

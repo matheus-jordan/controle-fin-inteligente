@@ -30,6 +30,32 @@ export function useTransactions(month?: string) {
   });
 }
 
+export function useCreateCategory() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (data: { name: string; type: 'income' | 'expense'; color: string; icon: string }) => {
+      const { data: row, error } = await supabase.from('categories').insert({ ...data, user_id: user!.id } as any).select().single();
+      if (error) throw error;
+      return row;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+  });
+}
+
+// Sets the category of several transactions at once (projected months update their series).
+export function useSetTransactionsCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, categoryId }: { ids: string[]; categoryId: string }) => {
+      const realIds = Array.from(new Set(ids.map(realId)));
+      const { error } = await supabase.from('transactions').update({ category_id: categoryId }).in('id', realIds);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
+  });
+}
+
 // Strip virtual suffix used for projected recurring occurrences.
 function realId(id: string): string {
   const idx = id.indexOf('-virtual-');

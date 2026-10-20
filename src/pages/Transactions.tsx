@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useTransactions, useUpdateTransaction } from '@/hooks/useFinanceData';
 import { formatCurrency } from '@/lib/format';
@@ -6,7 +7,7 @@ import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { MonthNav } from '@/components/shared/MonthNav';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Repeat, Check, Clock } from 'lucide-react';
+import { Search, Repeat, Check, Clock, Tags } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { TransactionForm, type TransactionToEdit } from '@/components/transactions/TransactionForm';
@@ -31,6 +32,9 @@ export default function Transactions() {
   const monthLabel = targetDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   const { data: transactions, isLoading } = useTransactions(currentMonth);
+  const { data: allTransactions } = useTransactions();
+  const navigate = useNavigate();
+  const uncategorizedCount = (allTransactions ?? []).filter(t => !t.category_id).length;
   const updateTransaction = useUpdateTransaction();
 
   const filtered = (transactions ?? []).filter(t => {
@@ -96,6 +100,18 @@ export default function Transactions() {
     <AppLayout>
       <div className="px-4 py-4 space-y-4 max-w-2xl mx-auto">
         <MonthNav label={monthLabel} onPrev={() => setMonthOffset(o => o - 1)} onNext={() => setMonthOffset(o => o + 1)} />
+
+        {/* Uncategorized shortcut */}
+        {uncategorizedCount > 0 && (
+          <button
+            onClick={() => navigate('/categorize')}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-primary/10 border border-primary/25 text-sm text-left hover:bg-primary/15 transition-colors"
+          >
+            <Tags className="h-4 w-4 shrink-0 text-primary" />
+            <span className="flex-1">{uncategorizedCount} lançamento{uncategorizedCount > 1 ? 's' : ''} sem categoria</span>
+            <span className="text-primary font-medium">Organizar</span>
+          </button>
+        )}
 
         {/* Totals of the filtered list */}
         <div className="glass rounded-2xl grid grid-cols-2 divide-x divide-border">
