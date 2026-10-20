@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCategories, useCreateTransaction, useUpdateTransactionFull } from '@/hooks/useFinanceData';
+import { useCategories, useCreateTransaction, useUpdateTransactionFull, useSplitRecurringTransaction } from '@/hooks/useFinanceData';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +23,9 @@ export interface TransactionToEdit {
   is_recurring: boolean;
   recurrence_interval: string | null;
   recurrence_end_date?: string | null;
+  // Set when editing a projected month of a recurring series
+  occurrence_date?: string;
+  series_date?: string;
 }
 
 interface TransactionFormProps {
@@ -52,14 +55,17 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
   const [hasDueDate, setHasDueDate] = useState(true);
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
+  const [editScope, setEditScope] = useState<'all' | 'forward'>('forward');
 
   const { data: categories } = useCategories();
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransactionFull();
+  const splitTransaction = useSplitRecurringTransaction();
 
   const isEditing = !!editTransaction;
   const filteredCategories = categories?.filter(c => c.type === type) ?? [];
   const isIncome = type === 'income';
+  const isFutureOccurrence = isEditing && editTransaction!.is_recurring && !!editTransaction!.occurrence_date;
 
   useEffect(() => {
     if (editTransaction) {
@@ -76,6 +82,7 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
       setRecurrenceEndDate(editTransaction.recurrence_end_date || '');
       setHasDueDate(!!editTransaction.due_date);
       setDueDate(editTransaction.due_date || new Date().toISOString().split('T')[0]);
+      setEditScope('forward');
     } else {
       resetForm();
     }
@@ -102,8 +109,18 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
     };
 
     try {
-      if (isEditing) {
-        await updateTransaction.mutateAsync({ id: editTransaction!.id, ...payload });
+      if (isFutureOccurrence && editScope === 'forward' && isRecurring) {
+        const { date: fromDate, is_recurring, ...data } = payload;
+        await splitTransaction.mutateAsync({ id: editTransaction!.id, fromDate, data });
+        toast.success('Atualizado deste mês em diante!');
+      } else if (isEditing) {
+        // Editing all months from a projected month: keep the series start date unless it was changed
+        const keepStart = isFutureOccurrence && date === editTransaction!.occurrence_date;
+        await updateTransaction.mutateAsync({
+          id: editTransaction!.id,
+          ...payload,
+          date: keepStart ? editTransaction!.series_date! : payload.date,
+        });
         toast.success('Transação atualizada!');
       } else {
         await createTransaction.mutateAsync(payload);
@@ -140,6 +157,31 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
         </SheetHeader>
 
         <div className="space-y-4 mt-4">
+          {/* Edit scope for recurring series */}
+          {isFutureOccurrence && (
+            <div>
+              <Label>Aplicar alteração a</Label>
+              <div className="flex rounded-lg bg-muted p-1 gap-1 mt-1">
+                <button
+                  onClick={() => setEditScope('forward')}
+                  className={cn('flex-1 py-2 rounded-md text-sm font-medium transition-colors',
+                    editScope === 'forward' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                  )}
+                >
+                  Deste mês em diante
+                </button>
+                <button
+                  onClick={() => setEditScope('all')}
+                  className={cn('flex-1 py-2 rounded-md text-sm font-medium transition-colors',
+                    editScope === 'all' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                  )}
+                >
+                  Todos os meses
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Type Toggle */}
           <div className="flex rounded-lg bg-muted p-1 gap-1">
             <button
@@ -297,9 +339,9 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
           <Button
             onClick={handleSubmit}
             className="w-full h-12 text-base"
-            disabled={createTransaction.isPending || updateTransaction.isPending}
+            disabled={createTransaction.isPending || updateTransaction.isPending || splitTransaction.isPending}
           >
-            {(createTransaction.isPending || updateTransaction.isPending)
+            {(createTransaction.isPending || updateTransaction.isPending || splitTransaction.isPending)
               ? 'Salvando...'
               : isEditing ? 'Atualizar' : 'Salvar Transação'}
           </Button>

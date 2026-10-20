@@ -69,6 +69,8 @@ export default function Transactions() {
       is_recurring: t.is_recurring,
       recurrence_interval: t.recurrence_interval,
       recurrence_end_date: t.recurrence_end_date ?? null,
+      occurrence_date: t.is_virtual ? t.date : undefined,
+      series_date: t.is_virtual ? t.series_date : undefined,
     });
     setShowForm(true);
   };
