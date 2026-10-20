@@ -41,9 +41,14 @@ export default function Dashboard() {
   const payInvoice = usePayCardInvoice();
   const { data: debts } = useDebts();
   const isCurrentMonth = monthOffset === 0;
+  // Income use: fixed commitments (recurring, card, debts) plus one-off spending, against income
   const committed = summary.committed;
-  const committedPct = committed.share === null ? null : Math.round(committed.share * 100);
-  const committedTone = committedPct === null ? 'text-muted-foreground' : committedPct > 70 ? 'text-destructive' : committedPct > 50 ? 'text-warning' : 'text-success';
+  const variableSpent = Math.max(0, summary.totalExpenses - committed.total);
+  const variableBudget = summary.totalIncome - committed.total;
+  const usedPct = summary.totalIncome > 0 ? Math.round((summary.totalExpenses / summary.totalIncome) * 100) : null;
+  const usedTone = usedPct === null ? 'text-muted-foreground' : usedPct > 100 ? 'text-destructive' : usedPct > 90 ? 'text-warning' : 'text-success';
+  const usageScale = Math.max(summary.totalIncome, summary.totalExpenses, 1);
+  const shareOfIncome = (v: number) => (summary.totalIncome > 0 ? `${Math.round((v / summary.totalIncome) * 100)}%` : '');
 
   const overdueCount = payments.filter(p => p.status === 'pending' && p.urgency === 'overdue').length;
   const pendingPayments = payments.filter(p => p.status === 'pending');
@@ -154,40 +159,48 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Committed income */}
-        {committedPct !== null && (
+        {/* Income use */}
+        {usedPct !== null && (
           <Card>
             <CardContent className="p-4">
               <div className="flex items-baseline justify-between">
-                <p className="text-sm font-semibold">Renda comprometida</p>
-                <p className={cn('text-2xl font-bold font-mono', committedTone)}>{committedPct}%</p>
+                <p className="text-sm font-semibold">Uso da renda</p>
+                <p className={cn('text-2xl font-bold font-mono', usedTone)}>{usedPct}%</p>
               </div>
-              <div className="flex h-2 rounded-full bg-muted overflow-hidden mt-3">
-                {[
-                  { v: committed.fixed, c: 'bg-primary' },
-                  { v: committed.card, c: 'bg-[hsl(var(--glow))]' },
-                  { v: committed.debt, c: 'bg-destructive' },
-                ].map((seg, i) => (
-                  <div key={i} className={seg.c} style={{ width: `${Math.min(100, (seg.v / summary.totalIncome) * 100)}%` }} />
-                ))}
+              <div className="relative mt-3">
+                <div className="flex h-2 gap-[2px] rounded-full bg-muted overflow-hidden">
+                  <div className="bg-[hsl(var(--viz-1))]" style={{ width: `${(committed.total / usageScale) * 100}%` }} title={`Fixos: ${formatCurrency(committed.total)}`} />
+                  <div className="bg-[hsl(var(--viz-2))]" style={{ width: `${(variableSpent / usageScale) * 100}%` }} title={`Avulsos: ${formatCurrency(variableSpent)}`} />
+                </div>
+                {summary.totalExpenses > summary.totalIncome && (
+                  // Marks where the income ends when spending goes past it
+                  <div className="absolute -top-1 h-4 w-0.5 rounded-full bg-foreground" style={{ left: `${(summary.totalIncome / usageScale) * 100}%` }} title="Fim da renda" />
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
-                {[
-                  { label: 'Fixas', v: committed.fixed, c: 'bg-primary' },
-                  { label: 'Cartão', v: committed.card, c: 'bg-[hsl(var(--glow))]' },
-                  { label: 'Dívidas', v: committed.debt, c: 'bg-destructive' },
-                ].filter(b => b.v > 0).map(b => (
-                  <div key={b.label}>
-                    <p className="flex items-center gap-1.5 text-muted-foreground"><span className={cn('h-2 w-2 rounded-full', b.c)} />{b.label}</p>
-                    <p className="font-mono font-semibold mt-0.5">{formatCurrency(b.v)}</p>
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                <div>
+                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[hsl(var(--viz-1))]" />Fixos {shareOfIncome(committed.total)}</p>
+                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(committed.total)}</p>
+                </div>
+                <div>
+                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[hsl(var(--viz-2))]" />Avulsos {shareOfIncome(variableSpent)}</p>
+                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(variableSpent)}</p>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground mt-3">
-                Livre após compromissos:{' '}
-                <span className={cn('font-mono font-semibold', summary.totalIncome - committed.total >= 0 ? 'text-foreground' : 'money-negative')}>
-                  {formatCurrency(summary.totalIncome - committed.total)}
-                </span>
+                {variableBudget <= 0 ? (
+                  <>Os fixos sozinhos já passam a renda em <span className="font-mono font-semibold money-negative">{formatCurrency(-variableBudget)}</span>.</>
+                ) : variableSpent > variableBudget ? (
+                  <>
+                    Depois dos fixos sobravam <span className="font-mono font-semibold text-foreground">{formatCurrency(variableBudget)}</span> para avulsos.
+                    Você passou <span className="font-mono font-semibold money-negative">{formatCurrency(variableSpent - variableBudget)}</span>.
+                  </>
+                ) : (
+                  <>
+                    Depois dos fixos sobram <span className="font-mono font-semibold text-foreground">{formatCurrency(variableBudget)}</span> para avulsos.
+                    Ainda restam <span className="font-mono font-semibold money-positive">{formatCurrency(variableBudget - variableSpent)}</span>.
+                  </>
+                )}
               </p>
             </CardContent>
           </Card>
