@@ -4,9 +4,9 @@ import { BottomNav } from './BottomNav';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <Header />
-      <main className="pb-20">
+      <main className="pb-28">
         {children}
       </main>
       <BottomNav />

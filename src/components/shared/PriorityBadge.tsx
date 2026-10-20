@@ -10,7 +10,7 @@ interface PriorityBadgeProps {
 export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
   const config = priorityConfig[priority];
   return (
-    <Badge variant="outline" className={cn(config.bgClass, config.textClass, 'border-0 font-medium text-[10px]', className)}>
+    <Badge variant="outline" className={cn(config.bgClass, config.textClass, 'border-0 font-medium text-xs', className)}>
       {config.label}
     </Badge>
   );

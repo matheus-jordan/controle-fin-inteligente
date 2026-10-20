@@ -127,7 +127,7 @@ export default function CreditCards() {
                         <div key={exp.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
                           <div>
                             <p className="text-sm">{exp.description}</p>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {exp.installments > 1 ? `${exp.current_installment}/${exp.installments}x` : 'À vista'}
                             </p>
                           </div>

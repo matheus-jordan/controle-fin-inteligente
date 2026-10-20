@@ -195,7 +195,7 @@ export default function Debts() {
                           <PriorityBadge priority={debt.priority} />
                           <StatusBadge status={(isFinished ? 'paid_off' : debt.status) as any} />
                           {isRecurring && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                               Recorrente
                             </span>
                           )}
@@ -207,7 +207,7 @@ export default function Debts() {
                             ? `${formatCurrency(Number(debt.installment_amount))}/mês`
                             : formatCurrency(remaining)}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {isRecurring && !endDate ? 'sem fim' : 'restante'}
                         </p>
                       </div>
@@ -215,7 +215,7 @@ export default function Debts() {
 
                     {isRecurring && endDate && (
                       <div>
-                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                        <div className="flex justify-between text-xs text-muted-foreground mb-1">
                           <span>{debt.paid_installments}/{(debt as any).duration_months} meses · até {new Date(endDate + 'T00:00:00').toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' })}</span>
                           <span>{formatCurrency(Number(debt.installment_amount))}/mês</span>
                         </div>
@@ -224,12 +224,12 @@ export default function Debts() {
                     )}
 
                     {isRecurring && !endDate && (
-                      <p className="text-[10px] text-muted-foreground">{debt.paid_installments} meses pagos</p>
+                      <p className="text-xs text-muted-foreground">{debt.paid_installments} meses pagos</p>
                     )}
 
                     {!isRecurring && !isSingle && (
                       <div>
-                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                        <div className="flex justify-between text-xs text-muted-foreground mb-1">
                           <span>{debt.paid_installments}/{debt.total_installments} parcelas</span>
                           <span>{formatCurrency(Number(debt.installment_amount))}/mês</span>
                         </div>
@@ -321,7 +321,7 @@ export default function Debts() {
                     placeholder="Deixe vazio para sem fim"
                     className="mt-1"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Após esse período, a dívida deixa de aparecer no sistema.
                   </p>
                 </div>

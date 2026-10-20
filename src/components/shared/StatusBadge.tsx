@@ -17,7 +17,7 @@ const statusConfig = {
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const config = statusConfig[status];
   return (
-    <Badge variant="outline" className={cn(config.className, 'font-medium text-[10px]', className)}>
+    <Badge variant="outline" className={cn(config.className, 'font-medium text-xs', className)}>
       {config.label}
     </Badge>
   );

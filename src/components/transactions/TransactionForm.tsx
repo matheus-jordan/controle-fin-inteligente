@@ -6,7 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCategories, useCreateTransaction, useUpdateTransactionFull, useSplitRecurringTransaction } from '@/hooks/useFinanceData';
+import { useCategories, useCreateTransaction, useUpdateTransactionFull, useSplitRecurringTransaction, useDeleteTransaction } from '@/hooks/useFinanceData';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -61,6 +66,7 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransactionFull();
   const splitTransaction = useSplitRecurringTransaction();
+  const deleteTransaction = useDeleteTransaction();
 
   const isEditing = !!editTransaction;
   const filteredCategories = categories?.filter(c => c.type === type) ?? [];
@@ -133,6 +139,17 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await deleteTransaction.mutateAsync(editTransaction!.id);
+      toast.success('Transação excluída');
+      resetForm();
+      onOpenChange(false);
+    } catch {
+      toast.error('Erro ao excluir');
+    }
+  };
+
   const resetForm = () => {
     setType('expense');
     setAmount('');
@@ -151,7 +168,7 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">
+      <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto max-w-2xl mx-auto">
         <SheetHeader>
           <SheetTitle>{isEditing ? 'Editar Transação' : 'Nova Transação'}</SheetTitle>
         </SheetHeader>
@@ -345,6 +362,32 @@ export function TransactionForm({ open, onOpenChange, editTransaction }: Transac
               ? 'Salvando...'
               : isEditing ? 'Atualizar' : 'Salvar Transação'}
           </Button>
+
+          {isEditing && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" className="w-full text-destructive hover:text-destructive hover:bg-destructive/10">
+                  <Trash2 className="h-4 w-4 mr-2" /> Excluir transação
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="glass-strong">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Excluir "{editTransaction!.description}"?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {editTransaction!.is_recurring
+                      ? 'Esta é uma transação recorrente: todos os meses desta série serão apagados. Não dá para desfazer.'
+                      : 'Não dá para desfazer.'}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Excluir
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </SheetContent>
     </Sheet>

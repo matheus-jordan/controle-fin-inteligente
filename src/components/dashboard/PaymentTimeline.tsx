@@ -47,7 +47,7 @@ export function PaymentTimeline({ payments }: PaymentTimelineProps) {
 
           return (
             <div key={dateKey} className="flex-shrink-0 min-w-[140px]">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
                 {isToday ? 'Hoje' : isTomorrow ? 'Amanhã' : label}
               </p>
               <div className="space-y-1.5">
@@ -56,7 +56,7 @@ export function PaymentTimeline({ payments }: PaymentTimelineProps) {
                     <div className={cn('w-2 h-2 rounded-full shrink-0', urgencyDot(item.urgency))} />
                     <div className="min-w-0">
                       <p className="text-xs font-medium truncate">{item.name}</p>
-                      <p className="text-[10px] font-mono text-muted-foreground">{formatCurrency(item.amount)}</p>
+                      <p className="text-xs font-mono text-muted-foreground">{formatCurrency(item.amount)}</p>
                     </div>
                   </div>
                 ))}

@@ -20,13 +20,6 @@ export function ThemeToggle() {
     }
   }, [dark]);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark') {
-      setDark(true);
-    }
-  }, []);
-
   return (
     <Button variant="ghost" size="icon" onClick={() => setDark(!dark)} className="rounded-full">
       {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
