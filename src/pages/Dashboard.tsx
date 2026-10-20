@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { useFinanceSummary, useUpcomingPayments, useUpdateTransaction, useDebts, type UpcomingPayment } from '@/hooks/useFinanceData';
+import { useFinanceSummary, useUpcomingPayments, useUpdateTransaction, useDebts, usePayCardInvoice, type UpcomingPayment } from '@/hooks/useFinanceData';
 import { formatCurrency } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { MonthNav } from '@/components/shared/MonthNav';
-import { TrendingUp, TrendingDown, Check, AlertTriangle, Landmark, ChevronRight, PartyPopper } from 'lucide-react';
+import { TrendingUp, TrendingDown, Check, AlertTriangle, Landmark, ChevronRight, PartyPopper, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -38,7 +38,12 @@ export default function Dashboard() {
   const summary = useFinanceSummary(currentMonth);
   const { payments, isLoading } = useUpcomingPayments(currentMonth);
   const updateTransaction = useUpdateTransaction();
+  const payInvoice = usePayCardInvoice();
   const { data: debts } = useDebts();
+  const isCurrentMonth = monthOffset === 0;
+  const committed = summary.committed;
+  const committedPct = committed.share === null ? null : Math.round(committed.share * 100);
+  const committedTone = committedPct === null ? 'text-muted-foreground' : committedPct > 70 ? 'text-destructive' : committedPct > 50 ? 'text-warning' : 'text-success';
 
   const overdueCount = payments.filter(p => p.status === 'pending' && p.urgency === 'overdue').length;
   const pendingPayments = payments.filter(p => p.status === 'pending');
@@ -53,9 +58,10 @@ export default function Dashboard() {
   const paidShare = summary.totalExpenses > 0 ? Math.min(100, (summary.paidExpenses / summary.totalExpenses) * 100) : 0;
 
   const handleMarkPaid = async (payment: UpcomingPayment) => {
-    if (payment.source !== 'transaction') return;
+    if (payment.source !== 'transaction' && payment.source !== 'card_invoice') return;
     try {
-      await updateTransaction.mutateAsync({ id: payment.id, status: 'paid' });
+      if (payment.source === 'card_invoice') await payInvoice.mutateAsync(payment.invoice!);
+      else await updateTransaction.mutateAsync({ id: payment.id, status: 'paid' });
       toast.success(`${payment.name} marcado como pago!`);
     } catch {
       toast.error('Erro ao atualizar');
@@ -95,12 +101,20 @@ export default function Dashboard() {
         <Card className="relative overflow-hidden">
           <div className="pointer-events-none absolute -top-20 -right-16 h-48 w-48 rounded-full bg-[hsl(var(--glow)/0.25)] blur-3xl" />
           <CardContent className="p-5 relative">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Saldo previsto</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {isCurrentMonth ? 'Saldo agora' : 'Realizado no mês'}
+            </p>
             <p className={cn(
               'text-4xl font-bold font-mono mt-1',
-              summary.estimatedRemaining >= 0 ? 'text-foreground neon-text' : 'money-negative'
+              summary.realizedBalance >= 0 ? 'text-foreground neon-text' : 'money-negative'
             )}>
-              {formatCurrency(summary.estimatedRemaining)}
+              {formatCurrency(summary.realizedBalance)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Previsto no fim do mês{' '}
+              <span className={cn('font-mono font-semibold', summary.estimatedRemaining >= 0 ? 'text-foreground' : 'money-negative')}>
+                {formatCurrency(summary.estimatedRemaining)}
+              </span>
             </p>
 
             <div className="grid grid-cols-2 gap-3 mt-5">
@@ -139,6 +153,47 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Committed income */}
+        {committedPct !== null && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-baseline justify-between">
+                <p className="text-sm font-semibold">Renda comprometida</p>
+                <p className={cn('text-2xl font-bold font-mono', committedTone)}>{committedPct}%</p>
+              </div>
+              <div className="flex h-2 rounded-full bg-muted overflow-hidden mt-3">
+                {[
+                  { v: committed.fixed, c: 'bg-primary' },
+                  { v: committed.card, c: 'bg-[hsl(var(--glow))]' },
+                  { v: committed.debt, c: 'bg-destructive' },
+                ].map((seg, i) => (
+                  <div key={i} className={seg.c} style={{ width: `${Math.min(100, (seg.v / summary.totalIncome) * 100)}%` }} />
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
+                <div>
+                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary" />Fixas</p>
+                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(committed.fixed)}</p>
+                </div>
+                <div>
+                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[hsl(var(--glow))]" />Cartão</p>
+                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(committed.card)}</p>
+                </div>
+                <div>
+                  <p className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-full bg-destructive" />Dívidas</p>
+                  <p className="font-mono font-semibold mt-0.5">{formatCurrency(committed.debt)}</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Livre após compromissos:{' '}
+                <span className={cn('font-mono font-semibold', summary.totalIncome - committed.total >= 0 ? 'text-foreground' : 'money-negative')}>
+                  {formatCurrency(summary.totalIncome - committed.total)}
+                </span>
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Debts summary */}
         {activeDebts.length > 0 && (
@@ -190,7 +245,9 @@ export default function Dashboard() {
                     <div className="divide-y divide-border">
                       {g.items.map(p => (
                         <div key={p.id} className="flex items-center gap-3 py-2.5">
-                          <span className={cn('h-2 w-2 rounded-full shrink-0', urgencyDot(p.urgency))} />
+                          {p.source === 'card_invoice'
+                            ? <CreditCard className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--glow))]" />
+                            : <span className={cn('h-2 w-2 rounded-full shrink-0', urgencyDot(p.urgency))} />}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <p className="text-sm font-medium truncate">{p.name}</p>
@@ -203,10 +260,11 @@ export default function Dashboard() {
                             )}>
                               {urgencyLabel(p)}
                               {p.source === 'fixed_bill' && ' · Conta fixa'}
+                              {p.source === 'card_invoice' && ' · Calculada pelo cartão'}
                             </p>
                           </div>
                           <p className="text-sm font-semibold font-mono">{formatCurrency(p.amount)}</p>
-                          {p.source === 'transaction' ? (
+                          {p.source === 'transaction' || p.source === 'card_invoice' ? (
                             <button
                               onClick={() => handleMarkPaid(p)}
                               className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center border border-border text-muted-foreground hover:text-success hover:border-success/50 hover:bg-success/10 transition-colors"

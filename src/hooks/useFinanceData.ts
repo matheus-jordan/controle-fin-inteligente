@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDaysUntilDue, getDueDateStatus } from '@/lib/format';
+import { cardInvoice, matchesCard, type CardInvoice } from '@/lib/cardInvoice';
 
 export function useCategories() {
   return useQuery({
@@ -412,6 +413,66 @@ export function useCreateCreditCard() {
   });
 }
 
+export function useUpdateCreditCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; credit_limit?: number; closing_day?: number | null; due_day?: number | null }) => {
+      const { error } = await supabase.from('credit_cards').update(data as any).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['credit_cards'] }),
+  });
+}
+
+export interface MonthInvoice extends CardInvoice {
+  // Transaction in the month that already represents this invoice (manual entry or paid invoice)
+  registered: any | null;
+}
+
+// Invoices due in the given month, linked to any transaction that already stands for them.
+export function useCardInvoices(month: string) {
+  const cards = useCreditCards();
+  const expenses = useCardExpenses();
+  const transactions = useTransactions(month);
+  const [y, m] = month.split('-').map(Number);
+  const invoices: MonthInvoice[] = (cards.data ?? []).map(card => ({
+    ...cardInvoice(card, expenses.data ?? [], y, m - 1),
+    registered: (transactions.data ?? []).find(t => matchesCard(t, card.name)) ?? null,
+  }));
+  return {
+    invoices,
+    // Invoices that only exist as computed values and still need to be counted
+    unregistered: invoices.filter(i => !i.registered && i.amount > 0),
+    isLoading: cards.isLoading || expenses.isLoading || transactions.isLoading,
+  };
+}
+
+export function usePayCardInvoice() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (invoice: CardInvoice) => {
+      const { data: cat } = await supabase.from('categories').select('id').eq('name', 'Cartão de Crédito').eq('type', 'expense').maybeSingle();
+      const toStr = (d: Date) => `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+      const due = invoice.dueDate ? toStr(invoice.dueDate) : `${invoice.month}-01`;
+      const { error } = await supabase.from('transactions').insert({
+        user_id: user!.id,
+        description: `Fatura ${invoice.cardName}`,
+        amount: invoice.amount,
+        type: 'expense',
+        category_id: cat?.id ?? null,
+        date: due,
+        due_date: invoice.dueDate ? due : null,
+        priority: 'critical',
+        status: 'paid',
+        is_recurring: false,
+      } as any);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
+  });
+}
+
 export function useCardExpenses(cardId?: string) {
   const { user } = useAuth();
   return useQuery({
@@ -447,7 +508,8 @@ export interface UpcomingPayment {
   daysUntil: number | null;
   urgency: 'overdue' | 'urgent' | 'warning' | 'ok' | 'none';
   priority: 'essential' | 'critical' | 'important' | 'optional';
-  source: 'transaction' | 'fixed_bill' | 'debt';
+  source: 'transaction' | 'fixed_bill' | 'debt' | 'card_invoice';
+  invoice?: CardInvoice;
   status: 'pending' | 'paid';
 }
 
@@ -481,6 +543,7 @@ export function useUpcomingPayments(month?: string) {
   const transactions = useTransactions(targetMonth);
   const fixedBills = useFixedBills();
   const debts = useDebts();
+  const invoices = useCardInvoices(targetMonth);
 
   const payments: UpcomingPayment[] = [];
 
@@ -563,6 +626,24 @@ export function useUpcomingPayments(month?: string) {
       });
     });
 
+  // Card invoices computed from card purchases and not yet registered as a transaction
+  invoices.unregistered.forEach(inv => {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const daysUntil = inv.dueDate ? Math.ceil((inv.dueDate.getTime() - today.getTime()) / 86400000) : null;
+    payments.push({
+      id: `invoice-${inv.cardId}-${inv.month}`,
+      name: `Fatura ${inv.cardName}`,
+      amount: inv.amount,
+      dueDate: inv.dueDate,
+      daysUntil,
+      urgency: daysUntil === null ? 'none' : getDueDateStatus(daysUntil),
+      priority: 'critical',
+      source: 'card_invoice',
+      status: 'pending',
+      invoice: inv,
+    });
+  });
+
   const priorityOrder = { essential: 0, critical: 1, important: 2, optional: 3 };
   payments.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
@@ -574,7 +655,7 @@ export function useUpcomingPayments(month?: string) {
 
   return {
     payments,
-    isLoading: transactions.isLoading || fixedBills.isLoading || debts.isLoading,
+    isLoading: transactions.isLoading || fixedBills.isLoading || debts.isLoading || invoices.isLoading,
   };
 }
 
@@ -583,6 +664,8 @@ export function useFinanceSummary(month?: string) {
   const targetMonth = month || `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
   const transactions = useTransactions(targetMonth);
   const debts = useDebts();
+  const cards = useCreditCards();
+  const invoices = useCardInvoices(targetMonth);
 
   const allTx = transactions.data ?? [];
   const incomes = allTx.filter(t => t.type === 'income');
@@ -608,9 +691,10 @@ export function useFinanceSummary(month?: string) {
 
   const txExpenseTotal = expenses.reduce((s, t) => s + Number(t.amount), 0);
   const debtExpenseTotal = debtExpenses.reduce((s, e) => s + e.amount, 0);
+  const invoiceTotal = invoices.unregistered.reduce((s, i) => s + i.amount, 0);
 
   const totalIncome = incomes.reduce((s, t) => s + Number(t.amount), 0);
-  const totalExpenses = txExpenseTotal + debtExpenseTotal;
+  const totalExpenses = txExpenseTotal + debtExpenseTotal + invoiceTotal;
 
   const paidTxExpenses = expenses.filter(t => t.status === 'paid').reduce((s, t) => s + Number(t.amount), 0);
   const pendingTxExpenses = expenses.filter(t => t.status === 'pending').reduce((s, t) => s + Number(t.amount), 0);
@@ -618,11 +702,24 @@ export function useFinanceSummary(month?: string) {
   const pendingDebt = debtExpenses.filter(e => e.status === 'pending').reduce((s, e) => s + e.amount, 0);
 
   const paidExpenses = paidTxExpenses + paidDebt;
-  const pendingExpenses = pendingTxExpenses + pendingDebt;
+  const pendingExpenses = pendingTxExpenses + pendingDebt + invoiceTotal;
   const estimatedRemaining = totalIncome - totalExpenses;
 
   const paidCount = expenses.filter(t => t.status === 'paid').length + debtExpenses.filter(e => e.status === 'paid').length;
-  const pendingCount = expenses.filter(t => t.status === 'pending').length + debtExpenses.filter(e => e.status === 'pending').length;
+  const pendingCount = expenses.filter(t => t.status === 'pending').length + debtExpenses.filter(e => e.status === 'pending').length + invoices.unregistered.length;
+
+  // Realized: income already received (up to today) minus what was already paid
+  const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+  const receivedIncome = incomes.filter(t => t.date <= todayStr).reduce((s, t) => s + Number(t.amount), 0);
+  const realizedBalance = receivedIncome - paidExpenses;
+
+  // Committed income: card invoices, debts and recurring bills
+  const cardNames = (cards.data ?? []).map(c => c.name);
+  const isCardTx = (t: any) => cardNames.some(n => matchesCard(t, n));
+  const committedCard = expenses.filter(isCardTx).reduce((s, t) => s + Number(t.amount), 0) + invoiceTotal;
+  const committedFixed = expenses.filter(t => t.is_recurring && !isCardTx(t)).reduce((s, t) => s + Number(t.amount), 0);
+  const committedDebt = debtExpenseTotal;
+  const committedTotal = committedCard + committedFixed + committedDebt;
 
   return {
     totalIncome,
@@ -631,9 +728,18 @@ export function useFinanceSummary(month?: string) {
     pendingExpenses,
     estimatedRemaining,
     incomeCount: incomes.length,
-    expenseCount: expenses.length + debtExpenses.length,
+    expenseCount: expenses.length + debtExpenses.length + invoices.unregistered.length,
     paidCount,
     pendingCount,
-    isLoading: transactions.isLoading || debts.isLoading,
+    receivedIncome,
+    realizedBalance,
+    committed: {
+      total: committedTotal,
+      fixed: committedFixed,
+      debt: committedDebt,
+      card: committedCard,
+      share: totalIncome > 0 ? committedTotal / totalIncome : null,
+    },
+    isLoading: transactions.isLoading || debts.isLoading || invoices.isLoading,
   };
 }
