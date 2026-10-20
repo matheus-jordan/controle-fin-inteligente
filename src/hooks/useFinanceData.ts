@@ -21,9 +21,22 @@ export function useTransactions(month?: string) {
   return useQuery({
     queryKey: ['transactions', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('transactions').select('*, categories(*)').eq('user_id', user!.id).order('date', { ascending: false });
-      if (error) throw error;
-      return data;
+      // The API caps each response at 1000 rows, so fetch page by page
+      const PAGE = 1000;
+      const rows = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*, categories(*)')
+          .eq('user_id', user!.id)
+          .order('date', { ascending: false })
+          .order('id')
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        rows.push(...data);
+        if (data.length < PAGE) break;
+      }
+      return rows;
     },
     select: (data) => (month ? buildMonth(data, month) : data),
     enabled: !!user,
