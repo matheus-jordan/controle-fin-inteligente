@@ -40,7 +40,6 @@ export default function Dashboard() {
   const updateTransaction = useUpdateTransaction();
   const payInvoice = usePayCardInvoice();
   const { data: debts } = useDebts();
-  const isCurrentMonth = monthOffset === 0;
   // Income use: fixed commitments (recurring, card, debts) plus one-off spending, against income
   const committed = summary.committed;
   const variableSpent = Math.max(0, summary.totalExpenses - committed.total);
@@ -107,21 +106,15 @@ export default function Dashboard() {
           <div className="pointer-events-none absolute -top-20 -right-16 h-48 w-48 rounded-full bg-[hsl(var(--glow)/0.25)] blur-3xl" />
           <CardContent className="p-5 relative">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {isCurrentMonth ? 'Disponível agora' : 'Disponível no mês'}
+              {summary.estimatedRemaining >= 0 ? 'Sobra prevista no mês' : 'Mês fecha no negativo'}
             </p>
             <p className={cn(
               'text-4xl font-bold font-mono mt-1',
-              summary.realizedBalance >= 0 ? 'text-foreground neon-text' : 'money-negative'
+              summary.estimatedRemaining >= 0 ? 'money-positive' : 'money-negative'
             )}>
-              {formatCurrency(summary.realizedBalance)}
+              {formatCurrency(summary.estimatedRemaining)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Entradas do mês menos o que já foi pago</p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Depois de pagar os pendentes ({formatCurrency(summary.pendingExpenses)}), sobram{' '}
-              <span className={cn('font-mono font-semibold', summary.estimatedRemaining >= 0 ? 'text-foreground' : 'money-negative')}>
-                {formatCurrency(summary.estimatedRemaining)}
-              </span>
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">Entradas menos todas as saídas do mês</p>
 
             <div className="grid grid-cols-2 gap-3 mt-5">
               <div className="rounded-xl bg-success/10 border border-success/20 p-3">
