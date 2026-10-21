@@ -20,6 +20,8 @@ const client = new pg.Client({
 });
 await client.connect();
 try {
+  // Two builds can start together (git push + CLI deploy): only one migrates at a time
+  await client.query('SELECT pg_advisory_lock(727274)');
   await client.query(`CREATE TABLE IF NOT EXISTS public.schema_migrations (
     name TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
