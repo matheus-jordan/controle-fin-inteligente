@@ -94,15 +94,6 @@ export default function Dashboard() {
       <div className="px-4 py-4 space-y-4 max-w-2xl mx-auto">
         <MonthNav label={monthLabel} onPrev={() => setMonthOffset(o => o - 1)} onNext={() => setMonthOffset(o => o + 1)} />
 
-        {/* One-time move to the new database */}
-        <button
-          onClick={() => navigate('/transfer')}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-primary/10 border border-primary/25 text-sm text-left hover:bg-primary/15 transition-colors"
-        >
-          <span className="flex-1">Banco novo pronto: transfira seus dados (1 passo)</span>
-          <span className="text-primary font-medium">Transferir</span>
-        </button>
-
         {/* Alert Banner */}
         {overdueCount > 0 && (
           <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-destructive/10 border border-destructive/25 text-destructive text-sm font-medium">

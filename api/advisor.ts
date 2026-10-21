@@ -1,5 +1,5 @@
 // Financial assistant endpoint (Vercel Function). Answers questions from a summary of the user's own data.
-// Requires ANTHROPIC_API_KEY, VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in the Vercel project env.
+// Requires ANTHROPIC_API_KEY and the Supabase integration vars (SUPABASE_URL, SUPABASE_ANON_KEY) in the Vercel project env.
 import Anthropic from '@anthropic-ai/sdk';
 
 const SYSTEM = `Você é o assistente financeiro pessoal dentro de um app de controle de gastos. Fala com uma pessoa só, sobre o dinheiro dela, em português do Brasil.
@@ -27,8 +27,8 @@ type Turn = { role: 'user' | 'assistant'; content: string };
 export async function POST(request: Request): Promise<Response> {
   // Only signed-in users of the app can spend the API key
   const auth = request.headers.get('authorization');
-  const supabaseUrl = process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_ANON_KEY;
   if (!auth?.startsWith('Bearer ') || !supabaseUrl || !supabaseKey) return json({ error: 'unauthorized' }, 401);
   const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, { headers: { Authorization: auth, apikey: supabaseKey } });
   if (!userRes.ok) return json({ error: 'unauthorized' }, 401);

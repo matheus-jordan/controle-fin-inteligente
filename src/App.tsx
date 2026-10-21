@@ -12,7 +12,6 @@ import Reports from "./pages/Reports";
 import Assistant from "./pages/Assistant";
 import Categorize from "./pages/Categorize";
 import Categories from "./pages/Categories";
-import Transfer from "./pages/Transfer";
 import AuthPage from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -39,7 +38,6 @@ function AppRoutes() {
       <Route path="/cards" element={<ProtectedRoute><CreditCards /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/assistant" element={<ProtectedRoute><Assistant /></ProtectedRoute>} />
-      <Route path="/transfer" element={<ProtectedRoute><Transfer /></ProtectedRoute>} />
       <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
       <Route path="/categorize" element={<ProtectedRoute><Categorize /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
