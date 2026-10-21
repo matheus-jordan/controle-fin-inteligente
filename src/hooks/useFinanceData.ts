@@ -56,6 +56,49 @@ export function useCreateCategory() {
   });
 }
 
+export function useUpdateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; name: string; color: string }) => {
+      const { data: rows, error } = await supabase.from('categories').update(data).eq('id', id).select('id');
+      if (error) throw error;
+      // RLS silently skips rows the user can't edit (shared default categories)
+      if (!rows?.length) throw new Error('not_editable');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+// Moves everything in a category to `moveTo` (or leaves it uncategorized), then deletes the category.
+export function useDeleteCategory() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async ({ id, moveTo }: { id: string; moveTo: string | null }) => {
+      // Shared default categories can't be deleted: stop before moving anything
+      const { data: cat, error: e1 } = await supabase.from('categories').select('*').eq('id', id).single();
+      if (e1) throw e1;
+      if ((cat as any).user_id !== user!.id) throw new Error('not_editable');
+      for (const table of ['transactions', 'card_expenses', 'fixed_bills'] as const) {
+        const { error } = await supabase.from(table).update({ category_id: moveTo }).eq('category_id', id).eq('user_id', user!.id);
+        if (error) throw error;
+      }
+      const { data: rows, error } = await supabase.from('categories').delete().eq('id', id).select('id');
+      if (error) throw error;
+      if (!rows?.length) throw new Error('not_editable');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['card_expenses'] });
+      qc.invalidateQueries({ queryKey: ['fixed_bills'] });
+    },
+  });
+}
+
 // Sets the category of several transactions at once (projected months update their series).
 export function useSetTransactionsCategory() {
   const qc = useQueryClient();

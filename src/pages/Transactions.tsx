@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useTransactions, useUpdateTransaction } from '@/hooks/useFinanceData';
@@ -11,6 +11,35 @@ import { Search, Repeat, Check, Clock, Tags } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { TransactionForm, type TransactionToEdit } from '@/components/transactions/TransactionForm';
+import { groupTransactions, displayDateOf, type GroupBy, type SortBy } from '@/lib/listGrouping';
+
+const groupOptions: { value: GroupBy; label: string }[] = [
+  { value: 'day', label: 'Dia' },
+  { value: 'category', label: 'Categoria' },
+  { value: 'priority', label: 'Prioridade' },
+  { value: 'status', label: 'Status' },
+  { value: 'none', label: 'Nenhum' },
+];
+
+const sortOptions: { value: SortBy; label: string }[] = [
+  { value: 'date', label: 'Data' },
+  { value: 'name', label: 'Nome (A-Z)' },
+  { value: 'amount', label: 'Valor' },
+];
+
+// Remembered list view (per browser)
+const VIEW_KEY = 'transactions-view';
+function loadView(): { groupBy: GroupBy; sortBy: SortBy } {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
+    return {
+      groupBy: groupOptions.some(o => o.value === v.groupBy) ? v.groupBy : 'day',
+      sortBy: sortOptions.some(o => o.value === v.sortBy) ? v.sortBy : 'date',
+    };
+  } catch {
+    return { groupBy: 'day', sortBy: 'date' };
+  }
+}
 
 const typeFilters = [
   { value: 'all', label: 'Todos' },
@@ -25,6 +54,15 @@ export default function Transactions() {
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<TransactionToEdit | null>(null);
+  const [view, setView] = useState(loadView);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+    } catch {
+      // storage unavailable: the choice just isn't remembered
+    }
+  }, [view]);
 
   const now = new Date();
   const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
@@ -44,15 +82,7 @@ export default function Transactions() {
     return true;
   });
 
-  const displayDateOf = (t: any): string => (t.type === 'income' ? t.date : (t.due_date || t.date));
-
-  // Group by the date shown on each row (due date for expenses), newest first
-  const byDay = filtered.reduce((acc, t) => {
-    const key = displayDateOf(t);
-    (acc[key] ??= []).push(t);
-    return acc;
-  }, {} as Record<string, any[]>);
-  const days = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+  const groups = groupTransactions(filtered, view.groupBy, view.sortBy);
 
   const totalIn = filtered.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
   const totalOut = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
@@ -95,6 +125,8 @@ export default function Transactions() {
     if (diff === -1) return 'Ontem';
     return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
   };
+
+  const shortDate = (key: string) => new Date(key + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
 
   return (
     <AppLayout>
@@ -158,6 +190,26 @@ export default function Transactions() {
               </SelectContent>
             </Select>
           </div>
+          <div className="flex gap-2">
+            <Select value={view.groupBy} onValueChange={(v) => setView(s => ({ ...s, groupBy: v as GroupBy }))}>
+              <SelectTrigger className="flex-1 rounded-full glass-flat h-9 text-xs">
+                <span className="text-muted-foreground mr-1">Agrupar:</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {groupOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={view.sortBy} onValueChange={(v) => setView(s => ({ ...s, sortBy: v as SortBy }))}>
+              <SelectTrigger className="flex-1 rounded-full glass-flat h-9 text-xs">
+                <span className="text-muted-foreground mr-1">Ordenar:</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sortOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Transaction List */}
@@ -167,11 +219,23 @@ export default function Transactions() {
           <div className="text-center py-8 text-muted-foreground">Nenhuma transação encontrada</div>
         ) : (
           <div className="space-y-4">
-            {days.map(day => (
-              <div key={day}>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 px-1">{dayLabel(day)}</p>
+            {groups.map(group => (
+              <div key={group.key}>
+                {view.groupBy !== 'none' && (
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5 px-1">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">
+                      {view.groupBy === 'day' ? dayLabel(group.key) : group.label}
+                      <span className="normal-case tracking-normal font-normal"> · {group.items.length}</span>
+                    </p>
+                    <p className="text-xs font-mono shrink-0">
+                      {group.totalIn > 0 && <span className="money-positive">+{formatCurrency(group.totalIn)}</span>}
+                      {group.totalIn > 0 && group.totalOut > 0 && <span className="text-muted-foreground"> / </span>}
+                      {group.totalOut > 0 && <span className="money-negative">-{formatCurrency(group.totalOut)}</span>}
+                    </p>
+                  </div>
+                )}
                 <div className="glass-flat rounded-2xl divide-y divide-border overflow-hidden">
-                  {byDay[day].map(t => {
+                  {group.items.map(t => {
                     const isIncome = t.type === 'income';
                     const isPaid = t.status === 'paid';
                     return (
@@ -189,9 +253,13 @@ export default function Transactions() {
                             <p className="text-sm font-medium truncate">{t.description}</p>
                             {!isIncome && (t.priority === 'essential' || t.priority === 'critical') && <PriorityBadge priority={t.priority} />}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
-                            {t.categories?.name ?? 'Sem categoria'}
-                            {t.is_recurring && <Repeat className="h-3 w-3" aria-label="Recorrente" />}
+                          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 min-w-0">
+                            <span className="truncate">
+                              {view.groupBy !== 'category' && (t.categories?.name ?? 'Sem categoria')}
+                              {view.groupBy !== 'category' && view.groupBy !== 'day' && ' · '}
+                              {view.groupBy !== 'day' && `${!isIncome && t.due_date ? 'vence ' : ''}${shortDate(displayDateOf(t))}`}
+                            </span>
+                            {t.is_recurring && <Repeat className="h-3 w-3 shrink-0" aria-label="Recorrente" />}
                           </p>
                         </div>
                         <div className="text-right flex flex-col items-end gap-1">
