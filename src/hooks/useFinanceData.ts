@@ -663,10 +663,10 @@ export function useFinanceSummary(month?: string) {
   const paidCount = expenses.filter(t => t.status === 'paid').length + debtExpenses.filter(e => e.status === 'paid').length;
   const pendingCount = expenses.filter(t => t.status === 'pending').length + debtExpenses.filter(e => e.status === 'pending').length + invoices.unregistered.length;
 
-  // Realized: income already received (up to today) minus what was already paid
-  const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-  const receivedIncome = incomes.filter(t => t.date <= todayStr).reduce((s, t) => s + Number(t.amount), 0);
-  const realizedBalance = receivedIncome - paidExpenses;
+  // Available now: the month's income (it pays the month's bills whatever its date) minus what was already paid.
+  // Available now minus pending = estimatedRemaining, so the hero numbers always add up.
+  const receivedIncome = totalIncome;
+  const realizedBalance = totalIncome - paidExpenses;
 
   // Committed income: card invoices, debts and recurring bills
   const cardNames = (cards.data ?? []).map(c => c.name);

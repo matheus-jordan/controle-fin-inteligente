@@ -107,7 +107,7 @@ export default function Dashboard() {
           <div className="pointer-events-none absolute -top-20 -right-16 h-48 w-48 rounded-full bg-[hsl(var(--glow)/0.25)] blur-3xl" />
           <CardContent className="p-5 relative">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {isCurrentMonth ? 'Saldo agora' : 'Realizado no mês'}
+              {isCurrentMonth ? 'Disponível agora' : 'Disponível no mês'}
             </p>
             <p className={cn(
               'text-4xl font-bold font-mono mt-1',
@@ -115,8 +115,9 @@ export default function Dashboard() {
             )}>
               {formatCurrency(summary.realizedBalance)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Previsto no fim do mês{' '}
+            <p className="text-xs text-muted-foreground mt-1">Entradas do mês menos o que já foi pago</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Depois de pagar os pendentes ({formatCurrency(summary.pendingExpenses)}), sobram{' '}
               <span className={cn('font-mono font-semibold', summary.estimatedRemaining >= 0 ? 'text-foreground' : 'money-negative')}>
                 {formatCurrency(summary.estimatedRemaining)}
               </span>
