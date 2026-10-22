@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupTransactions } from './listGrouping';
+import { groupTransactions, recurrenceEnd } from './listGrouping';
 
 const tx = (id: string, description: string, amount: number, extra: any = {}) => ({
   id, description, amount, type: 'expense', date: '2026-10-01', due_date: null, status: 'pending', priority: 'important', categories: null, ...extra,
@@ -33,5 +33,23 @@ describe('groupTransactions', () => {
   it('sorts by name ignoring case and by amount', () => {
     expect(groupTransactions(list, 'none', 'name')[0].items.map(t => t.id)).toEqual(['b', 'c', 'a', 's']);
     expect(groupTransactions(list, 'none', 'amount')[0].items.map(t => t.id)).toEqual(['s', 'b', 'a', 'c']);
+  });
+});
+
+describe('recurrenceEnd', () => {
+  const rec = (extra: any) => ({ is_recurring: true, recurrence_interval: 'monthly', date: '2026-10-25', ...extra });
+  it('counts monthly occurrences left including the shown month', () => {
+    expect(recurrenceEnd(rec({ recurrence_end_date: '2027-03-25' }))).toEqual({ label: 'mar/2027', remaining: 6 });
+    expect(recurrenceEnd(rec({ recurrence_end_date: '2026-10-31' }))?.remaining).toBe(1);
+  });
+  it('skips the end month when the end date is before the due day', () => {
+    expect(recurrenceEnd(rec({ recurrence_end_date: '2027-03-10' }))).toEqual({ label: 'fev/2027', remaining: 5 });
+  });
+  it('is null without an end date or when not recurring', () => {
+    expect(recurrenceEnd(rec({ recurrence_end_date: null }))).toBeNull();
+    expect(recurrenceEnd({ is_recurring: false, recurrence_end_date: '2027-01-01', date: '2026-10-01' })).toBeNull();
+  });
+  it('shows the full date for weekly series', () => {
+    expect(recurrenceEnd(rec({ recurrence_interval: 'weekly', recurrence_end_date: '2027-01-15' }))).toEqual({ label: '15/01/2027', remaining: null });
   });
 });

@@ -64,3 +64,21 @@ export function groupTransactions(list: any[], groupBy: GroupBy, sortBy: SortBy)
   else result.sort((a, b) => Number(a.rank) - Number(b.rank));
   return result.map(({ rank, ...g }) => ({ ...g, items: sortItems(g.items, sortBy) }));
 }
+
+// When a recurring transaction ends, and for monthly ones how many occurrences are left counting the shown one.
+export function recurrenceEnd(t: any): { label: string; remaining: number | null } | null {
+  if (!t.is_recurring || !t.recurrence_end_date) return null;
+  const end = new Date(t.recurrence_end_date + 'T00:00:00');
+  const interval = t.recurrence_interval || 'monthly';
+  if (interval !== 'monthly') {
+    return { label: end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }), remaining: null };
+  }
+  const shown = new Date(t.date + 'T00:00:00');
+  // The end month only has an occurrence if the end date isn't before that month's occurrence day
+  const daysInEndMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+  const lastIdx = end.getFullYear() * 12 + end.getMonth() - (end.getDate() < Math.min(shown.getDate(), daysInEndMonth) ? 1 : 0);
+  const remaining = lastIdx - (shown.getFullYear() * 12 + shown.getMonth()) + 1;
+  const last = new Date(Math.floor(lastIdx / 12), lastIdx % 12, 1);
+  const month = last.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+  return { label: `${month}/${last.getFullYear()}`, remaining: Math.max(0, remaining) };
+}

@@ -11,7 +11,7 @@ import { Search, Repeat, Check, Clock, Tags } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { TransactionForm, type TransactionToEdit } from '@/components/transactions/TransactionForm';
-import { groupTransactions, displayDateOf, type GroupBy, type SortBy } from '@/lib/listGrouping';
+import { groupTransactions, displayDateOf, recurrenceEnd, type GroupBy, type SortBy } from '@/lib/listGrouping';
 
 const groupOptions: { value: GroupBy; label: string }[] = [
   { value: 'day', label: 'Dia' },
@@ -261,6 +261,19 @@ export default function Transactions() {
                             </span>
                             {t.is_recurring && <Repeat className="h-3 w-3 shrink-0" aria-label="Recorrente" />}
                           </p>
+                          {(() => {
+                            const end = recurrenceEnd(t);
+                            if (!end) return null;
+                            return (
+                              <p className={cn('text-xs mt-0.5', end.remaining === 1 ? 'text-success' : 'text-muted-foreground')}>
+                                {end.remaining === null
+                                  ? `Termina em ${end.label}`
+                                  : end.remaining === 1
+                                    ? `Última parcela (${end.label})`
+                                    : `Termina em ${end.label} · faltam ${end.remaining}`}
+                              </p>
+                            );
+                          })()}
                         </div>
                         <div className="text-right flex flex-col items-end gap-1">
                           <p className={cn('text-sm font-semibold font-mono', isIncome ? 'money-positive' : 'money-negative')}>
