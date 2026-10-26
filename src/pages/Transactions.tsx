@@ -33,11 +33,11 @@ function loadView(): { groupBy: GroupBy; sortBy: SortBy } {
   try {
     const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
     return {
-      groupBy: groupOptions.some(o => o.value === v.groupBy) ? v.groupBy : 'day',
+      groupBy: groupOptions.some(o => o.value === v.groupBy) ? v.groupBy : 'none',
       sortBy: sortOptions.some(o => o.value === v.sortBy) ? v.sortBy : 'date',
     };
   } catch {
-    return { groupBy: 'day', sortBy: 'date' };
+    return { groupBy: 'none', sortBy: 'date' };
   }
 }
 
@@ -50,7 +50,7 @@ const typeFilters = [
 export default function Transactions() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState<string>('all');
+  const [filterType, setFilterType] = useState<string>('expense');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<TransactionToEdit | null>(null);
