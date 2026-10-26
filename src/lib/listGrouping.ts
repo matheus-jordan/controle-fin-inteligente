@@ -22,7 +22,9 @@ function sortItems(items: any[], sortBy: SortBy): any[] {
   if (sortBy === 'name') sorted.sort((a, b) => a.description.localeCompare(b.description, 'pt-BR', { sensitivity: 'base' }) || byDate(a, b));
   else if (sortBy === 'amount') sorted.sort((a, b) => Number(b.amount) - Number(a.amount) || byDate(a, b));
   else sorted.sort(byDate);
-  return sorted;
+  // Paid expenses sink to the bottom of the group, keeping the chosen order inside each part
+  const isPaidExpense = (t: any) => t.type !== 'income' && t.status === 'paid';
+  return [...sorted.filter(t => !isPaidExpense(t)), ...sorted.filter(isPaidExpense)];
 }
 
 // Group key, label and rank (lower shows first) of a transaction for the chosen grouping

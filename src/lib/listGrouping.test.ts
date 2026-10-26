@@ -26,13 +26,24 @@ describe('groupTransactions', () => {
     expect(groupTransactions(list, 'priority', 'date').map(g => g.label)).toEqual(['Essencial', 'Crítico', 'Importante', 'Entradas']);
   });
 
+  it('puts paid expenses last inside each group, keeping the sort order', () => {
+    const items = [
+      tx('p1', 'Água', 50, { status: 'paid', due_date: '2026-10-20' }),
+      tx('n1', 'Luz', 80, { due_date: '2026-10-20' }),
+      tx('p2', 'Gás', 70, { status: 'paid', due_date: '2026-10-20' }),
+      tx('n2', 'Net', 90, { due_date: '2026-10-20' }),
+    ];
+    const g = groupTransactions(items, 'none', 'amount');
+    expect(g[0].items.map(t => t.id)).toEqual(['n2', 'n1', 'p2', 'p1']);
+  });
+
   it('groups by status with pending first', () => {
     expect(groupTransactions(list, 'status', 'date').map(g => g.label)).toEqual(['Pendente', 'Pago', 'Entradas']);
   });
 
-  it('sorts by name ignoring case and by amount', () => {
-    expect(groupTransactions(list, 'none', 'name')[0].items.map(t => t.id)).toEqual(['b', 'c', 'a', 's']);
-    expect(groupTransactions(list, 'none', 'amount')[0].items.map(t => t.id)).toEqual(['s', 'b', 'a', 'c']);
+  it('sorts by name ignoring case and by amount, paid expenses last', () => {
+    expect(groupTransactions(list, 'none', 'name')[0].items.map(t => t.id)).toEqual(['c', 'a', 's', 'b']);
+    expect(groupTransactions(list, 'none', 'amount')[0].items.map(t => t.id)).toEqual(['s', 'a', 'c', 'b']);
   });
 });
 

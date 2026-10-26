@@ -245,12 +245,12 @@ export default function Transactions() {
                         tabIndex={0}
                         onClick={() => handleEdit(t)}
                         onKeyDown={(e) => e.key === 'Enter' && handleEdit(t)}
-                        className="flex items-center gap-3 px-3 py-3 cursor-pointer hover:bg-accent/40 transition-colors"
+                        className={cn('flex items-center gap-3 px-3 py-3 cursor-pointer hover:bg-accent/40 transition-colors', !isIncome && isPaid && 'opacity-50')}
                       >
                         <div className={cn('w-1 h-9 rounded-full shrink-0', isIncome ? 'bg-success' : 'bg-destructive')} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium truncate">{t.description}</p>
+                            <p className={cn('text-sm font-medium truncate', !isIncome && isPaid && 'line-through text-muted-foreground')}>{t.description}</p>
                             {!isIncome && (t.priority === 'essential' || t.priority === 'critical') && <PriorityBadge priority={t.priority} />}
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 min-w-0">
@@ -276,7 +276,7 @@ export default function Transactions() {
                           })()}
                         </div>
                         <div className="text-right flex flex-col items-end gap-1">
-                          <p className={cn('text-sm font-semibold font-mono', isIncome ? 'money-positive' : 'money-negative')}>
+                          <p className={cn('text-sm font-semibold font-mono', isIncome ? 'money-positive' : 'money-negative', !isIncome && isPaid && 'line-through')}>
                             {isIncome ? '+' : '-'}{formatCurrency(Number(t.amount))}
                           </p>
                           {!isIncome && (
